@@ -9,6 +9,7 @@ from tqdm import tqdm
 import lab as B
 import wbml.out as out
 import experiment as exp
+import torchvision.datasets as tvds
 
 
 import warnings
@@ -79,11 +80,11 @@ def create_original_image(test_batch):
     original_image = torch.zeros((28, 28)) # blank image
 
     # Extract single image's target pixel
-    yt_single = test_batch["yt_all_other"].elements[0][0, 0].view(-1)
+    yt_single = test_batch["yt_all_non_context"].elements[0][0, 0].view(-1)
     context_pixels = test_batch["contexts"][0][1][0].squeeze(0)
     all_pixels = torch.cat([context_pixels, yt_single])
 
-    xt_single = test_batch["xt_all_other"].elements[0][0][0].T
+    xt_single = test_batch["xt_all_non_context"].elements[0][0][0].T
     context_coords = test_batch["contexts"][0][0][0].T
     all_coords = torch.cat([context_coords, xt_single]) 
 
@@ -97,8 +98,8 @@ def create_original_image(test_batch):
         original_image[pixel_y_all[i], pixel_x_all[i]] = grayscale_value
 
     num_context_pixels = test_batch["contexts"][0][1].shape[-1]  # Number of context pixels
-    num_yt_all_other_pixels = test_batch["yt_all_other"].elements[0].shape[-1]  # Pixels in yt_all_other
-    print(f"Number of context pixels: {num_context_pixels}, taget pixels: {num_yt_all_other_pixels}, total: {num_context_pixels+num_yt_all_other_pixels}")
+    num_yt_all_non_context_pixels = test_batch["yt_all_non_context"].elements[0].shape[-1]  # Pixels in yt_all_non_context
+    print(f"Number of context pixels: {num_context_pixels}, taget pixels: {num_yt_all_non_context_pixels}, total: {num_context_pixels+num_yt_all_non_context_pixels}")
 
     return original_image
 
@@ -124,7 +125,7 @@ def create_masked_image(test_batch):
 
 
 def create_predicted_image(test_batch, model, masked_image):
-    xt_single = test_batch["xt_all_other"].elements[0][0][0].T  # Extract missing pixel coordinates
+    xt_single = test_batch["xt_all_non_context"].elements[0][0][0].T  # Extract missing pixel coordinates
     pixel_x = torch.round((xt_single[:, 0] + 1) * 13.5).long()
     pixel_y = torch.round((xt_single[:, 1] + 1) * 13.5).long()
 
@@ -140,7 +141,7 @@ def create_predicted_image(test_batch, model, masked_image):
         mean, _, _, _ = predict_func(
             model,
             test_batch["contexts"],
-            test_batch["xt_all_other"],
+            test_batch["xt_all_non_context"],
             num_samples=args.num_samples,
         )
     pred_normalized_pixels = mean.elements[0][0, 0]
@@ -170,35 +171,78 @@ def create_predicted_image(test_batch, model, masked_image):
     return completed_image
 
 
-def plot_image(image_tensor, title, ax):
-    """Helper function to plot an image from a tensor."""
-    image = image_tensor.squeeze(0).cpu().numpy() 
-    ax.imshow(image, cmap="gray")
-    ax.set_title(title)
-    ax.axis("off")
+# def plot_image(image_tensor, title, ax):
+#     """Helper function to plot an image from a tensor."""
+#     image = image_tensor.squeeze(0).cpu().numpy() 
+#     ax.imshow(image, cmap="gray")
+#     ax.set_title(title)
+#     ax.axis("off")
 
 
-def plot_original_masked_predicted(original_image, masked_image, completed_image, name):
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-    plot_image(original_image, "Original Image (Full)", axes[0])
-    print("After original_image")
+# def plot_original_masked_predicted(original_image, masked_image, completed_image, name):
+#     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+#     plot_image(original_image, "Original Image (Full)", axes[0])
+#     print("After original_image")
 
-    axes[1].imshow(masked_image.numpy(), cmap=None)
-    axes[1].set_title("Masked Image") # (Blue = Pixels not in Context)
-    axes[1].axis("off")
-    print("After masked_image")
+#     axes[1].imshow(masked_image.numpy(), cmap=None)
+#     axes[1].set_title("Masked Image") # (Blue = Pixels not in Context)
+#     axes[1].axis("off")
+#     print("After masked_image")
 
-    # print(completed_image)
-    print("Min:", completed_image.min().item())
-    print("Max:", completed_image.max().item())
-    axes[2].imshow(completed_image.numpy(), cmap=None)
-    axes[2].set_title("Completed Image (Model Predictions)")
-    axes[2].axis("off")
-    print("After completed_image")
+#     # print(completed_image)
+#     print("Min:", completed_image.min().item())
+#     print("Max:", completed_image.max().item())
+#     axes[2].imshow(completed_image.numpy(), cmap=None)
+#     axes[2].set_title("Completed Image (Model Predictions)")
+#     axes[2].axis("off")
+#     print("After completed_image")
 
-    plt.tight_layout()
-    plt.savefig(f"figures/emnist_original_masked_predicted_{name}_{args.ar}.png", dpi=300, bbox_inches="tight")
-    # plt.show()
+#     plt.tight_layout()
+#     plt.savefig(f"figures/emnist_original_masked_predicted_{name}_{args.ar}.png", dpi=300, bbox_inches="tight")
+#     # plt.show()
+
+
+
+def predict_mean_and_variance(test_batch, model):
+    xt_all = test_batch["xt_all"]
+
+    if args.ar == "no_ar":
+        predict_func = nps.predict
+    elif args.ar == "old_ar":
+        predict_func = ar_predict
+    else:
+        raise NotImplementedError("AR variant not implemented.")
+
+    with torch.no_grad():
+        mean, var, _, _ = predict_func(
+            model,
+            test_batch["contexts"],
+            xt_all,
+            num_samples=args.num_samples,
+        )
+
+    # Get predictions for a single image (assumes batch_size = 1)
+    mean_flat = mean.elements[0][0, 0] + 0.5  # de-normalize from [-0.5, 0.5] → [0, 1]
+    var_flat = var.elements[0][0, 0]
+
+    # Get coordinates to reshape flat vector to image
+    coords = xt_all.elements[0][0][0].T
+    pixel_x = torch.round((coords[:, 0] + 1) * 13.5).long()
+    pixel_y = torch.round((coords[:, 1] + 1) * 13.5).long()
+
+    # Clamp indices to avoid out-of-bounds
+    pixel_x = torch.clamp(pixel_x, 0, 27)
+    pixel_y = torch.clamp(pixel_y, 0, 27)
+
+    # Create blank images
+    mean_image = torch.zeros((28, 28))
+    var_image = torch.zeros((28, 28))
+
+    for i in range(len(pixel_x)):
+        mean_image[pixel_y[i], pixel_x[i]] = mean_flat[i]
+        var_image[pixel_y[i], pixel_x[i]] = var_flat[i]
+
+    return mean_image, var_image
 
 
 if __name__ == "__main__":
@@ -219,17 +263,65 @@ if __name__ == "__main__":
     model.load_state_dict(
         torch.load(experiment["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
     )
+
+    label_map = {}
+    with open("code/arnp/datasets/EMNIST/raw/emnist-balanced-mapping.txt", "r") as f:
+        for line in f:
+            label_id, ascii_code = map(int, line.strip().split())
+            label_map[label_id] = chr(ascii_code)
+
+
     gens_eval_instances = experiment["gens_eval"]()  # Get evaluation datasets
     for name, gen_eval in gens_eval_instances:
         print(name)
-        test_batches = gen_eval.generate_batch() # Get single test batch
-        # print(f"Number of images in one {name} test_batch: {test_batches['yt'].elements[0].shape[0]}")
-        original_image = create_original_image(test_batches)
-        print("Finished creating original image")
-        masked_image = create_masked_image(test_batches)
-        print("Finished creating masked image")
-        completed_image = create_predicted_image(test_batches, model, masked_image)
-        print("Finished completed masked image")
-        # completed_image = masked_image
-        plot_original_masked_predicted(original_image, masked_image, completed_image, name)
+
+        fixed_index = 10
+
+        for num_context in [1, 40, 200, 728]:
+            test_batch = gen_eval.generate_batch(
+                num_context=num_context, 
+                num_target=784 - num_context,
+                fixed_index=fixed_index
+            )
+            label = test_batch["labels"][0].item()
+            print(f"Label: {label}")
+
+            label_id = test_batch["labels"][0].item()
+            char = label_map[label_id]
+            print(f"True label: {char} (label ID: {label_id})")
+
+            # Reconstruct original full image
+            original_image = create_original_image(test_batch)
+            print("Finished creating original image")
+
+            # Masked context image (with blue background)
+            masked_image = create_masked_image(test_batch)
+            print("Finished creating masked image")
+
+            # Predict mean and variance from model
+            mean_image, var_image = predict_mean_and_variance(test_batch, model)
+
+            # Plot original, context, mean, variance
+            fig, axes = plt.subplots(4, 1, figsize=(3, 10))
+
+            axes[0].imshow(original_image.numpy(), cmap="gray")
+            axes[0].set_title("Original")
+            axes[0].axis("off")
+
+            axes[1].imshow(masked_image.numpy())
+            axes[1].set_title(f"Context ({num_context})")
+            axes[1].axis("off")
+
+            axes[2].imshow(mean_image.numpy(), cmap="gray")
+            axes[2].set_title("Mean")
+            axes[2].axis("off")
+
+            axes[3].imshow(var_image.numpy(), cmap="gray")
+            axes[3].set_title("Variance")
+            axes[3].axis("off")
+
+            plt.tight_layout()
+            plt.savefig(f"figures/emnist_{name.replace(' ', '_').lower()}_context_{num_context}_{args.ar}.png", dpi=300, bbox_inches="tight")
+            plt.close()
+
 

@@ -99,7 +99,7 @@ class EmnistGenerator(DataGenerator):
         return data, targets
 
     
-    def generate_batch(self):
+    def generate_batch(self, num_context=None, num_target=None, fixed_index=None):
         """Generates a batch for EMNIST Meta-Regression.
 
         Returns:
@@ -107,7 +107,14 @@ class EmnistGenerator(DataGenerator):
         """
         with B.on_device(self.device):
             # Select a batch of images randomly
-            indices = torch.randint(0, len(self.data), (self.batch_size,))
+            if fixed_index is not None:
+                indices = torch.tensor([fixed_index] * self.batch_size)
+            else:
+                indices = torch.randint(0, len(self.data), (self.batch_size,))
+            # indices = torch.randint(0, len(self.data), (self.batch_size,))
+
+            labels = self.targets[indices] 
+
             images = self.data[indices].to(self.device)  # Shape: (batch_size, 1, 28, 28)
 
             # Flatten images to 1D (28x28 = 784)
@@ -120,8 +127,10 @@ class EmnistGenerator(DataGenerator):
             pixel_coords = pixel_coords.to(self.device).expand(self.batch_size, -1, -1)  # (batch_size, 784, 2)
 
             # Randomly sample context and target indices
-            num_context = torch.randint(3, 197, (1,)).item()  # Sample N from U[3,197)
-            num_target = torch.randint(3, 200 - num_context, (1,)).item()  # Sample M from U[3, 200-N)
+            if num_context is None:
+                num_context = torch.randint(3, 197, (1,)).item()
+            if num_target is None:
+                num_target = torch.randint(3, 200 - num_context, (1,)).item()
 
             all_indices = torch.randperm(28*28)  # Shuffle pixel indices
             context_indices = all_indices[:num_context]
@@ -143,21 +152,27 @@ class EmnistGenerator(DataGenerator):
             # yt = torch.clamp(yt, min=lower + epsilon, max=upper - epsilon) # TODO transform 
 
             # Extract remaining pixels for full image completion (excluding context pixels)
-            xt_all_other = B.take(pixel_coords, non_context_indices, axis=1)  # (batch_size, remaining_pixels, 2)
-            yt_all_other = B.take(images, non_context_indices, axis=2) - 0.5  # (batch_size, 1, remaining_pixels)
+            xt_all_non_context = B.take(pixel_coords, non_context_indices, axis=1)  # (batch_size, remaining_pixels, 2)
+            yt_all_non_context = B.take(images, non_context_indices, axis=2) - 0.5  # (batch_size, 1, remaining_pixels)
 
-            # yt_all_other = torch.clamp(yt_all_other, min=lower + epsilon, max=upper - epsilon) # TODO transform 
+            # yt_all_non_context = torch.clamp(yt_all_non_context, min=lower + epsilon, max=upper - epsilon) # TODO transform 
+            
+            xt_all = pixel_coords.permute(0, 2, 1)  # (batch_size, 2, 784)
+            yt_all = images - 0.5 
 
             # Reshape to match (*b, c, *n) convention
             xc = xc.permute(0, 2, 1)  # (batch_size, 2, N)  -- c=2 for (x, y)
             xt = xt.permute(0, 2, 1)  # (batch_size, 2, M)
-            xt_all_other = xt_all_other.permute(0, 2, 1)  # (batch_size, 2, remaining_pixels)
+            xt_all_non_context = xt_all_non_context.permute(0, 2, 1)  # (batch_size, 2, remaining_pixels)
             batch = {
                 "contexts": [(xc, yc)],  # Ensure correct tensor format for context
                 "xt": AggregateInput((xt, 0)),  # Ensure xt follows correct convention
                 "yt": Aggregate(yt),  # Ensure yt follows correct convention
-                "xt_all_other": AggregateInput((xt_all_other, 0)),  # All pixels except context
-                "yt_all_other": Aggregate(yt_all_other),  # Ground truth values for all other pixels
+                "xt_all_non_context": AggregateInput((xt_all_non_context, 0)),  # All pixels except context
+                "yt_all_non_context": Aggregate(yt_all_non_context),  # Ground truth values for all other pixels
+                "xt_all": AggregateInput((xt_all, 0)), 
+                "yt_all": Aggregate(yt_all),   
+                "labels": labels 
             }  
             return batch
 
