@@ -327,43 +327,26 @@ def ar_loglik(
     # index of `xt`. Note that `i_xt` then does _not_ refer to the index of the output.
     # The index of the output `i_out` will be `i_out = xt[j][0]`.
 
-    # Evaluate the log-likelihood autoregressively.
-    # print("contexts: ", contexts[0][0].shape)
-    # print("contexts points 0: ", contexts[0][0][0][0])
-    # print("contexts points 1: ", contexts[0][0][0][1])
 
-
-    # print("Number of pairs: ", len(pairs))
     contexts = list(contexts)  # Copy it so we can modify it.
     logpdfs = []
     for i_xt, i_out, i_x in pairs:
-        # print("xt[i_xt] shape: ", xt[i_xt][0].shape)
-        # print("yt[i_xt] shape: ", yt[i_xt].shape)
         xti, _ = xt[i_xt]
         yti = yt[i_xt]
 
         # Make the selection of the particular input.
         xti = xti[..., i_x : i_x + 1]
         yti = yti[..., i_x : i_x + 1]
-        # print("xti shape: ", xti.shape)
-        # print("yti shape: ", yti.shape)
 
         # Compute logpdf.
         state, pred = model(state, contexts, AggregateInput((xti, i_out)))
-        # mean = pred.vectorised_normal.mean  # Extract mean (Dense object)
-        # print("Predicted mean tensor shape: ", mean.mat.shape) # (b, c, n) B: batch size, c: dimensionality of the inputs/outputs or the number of channel, n: number of data points
 
         logpdfs.append(pred.logpdf(Aggregate(yti)))
 
         # Append to the context.
         xci, yci = contexts[i_out]
-        # print("xci shape: ", xci.shape)
-        # print("yci shape: ", yci.shape)
-        # print("xti shape: ", xti.shape)
-        # print("yti shape: ", yti.shape)
 
         contexts[i_out] = _merge_contexts(xci, yci, xti, yti)
-        # sys.exit()
     logpdf = sum(logpdfs)
 
     if normalise:
