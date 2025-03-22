@@ -64,8 +64,8 @@ class EmnistGenerator(DataGenerator):
         
         self.seed = seed
         
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed) 
+        # torch.manual_seed(seed)
+        # torch.cuda.manual_seed_all(seed) 
         
         self.data, self.targets = self.load_emnist(train, subset, device, class_range)
 
@@ -132,13 +132,21 @@ class EmnistGenerator(DataGenerator):
             xc = B.take(pixel_coords, context_indices, axis=1)
             xt = B.take(pixel_coords, target_indices, axis=1)
 
+            # lower, upper = (-0.48, 0.48) # TODO transform 
+            # epsilon = 1e-4 # TODO transform 
+
             # Extract pixel values and normalize to [-0.5, 0.5]
             yc = B.take(images, context_indices, axis=2) - 0.5  # (batch_size, 1, N)
             yt = B.take(images, target_indices, axis=2) - 0.5  # (batch_size, 1, M)
+            
+            # yc = torch.clamp(yc, min=lower + epsilon, max=upper - epsilon) # TODO transform 
+            # yt = torch.clamp(yt, min=lower + epsilon, max=upper - epsilon) # TODO transform 
 
             # Extract remaining pixels for full image completion (excluding context pixels)
             xt_all_other = B.take(pixel_coords, non_context_indices, axis=1)  # (batch_size, remaining_pixels, 2)
             yt_all_other = B.take(images, non_context_indices, axis=2) - 0.5  # (batch_size, 1, remaining_pixels)
+
+            # yt_all_other = torch.clamp(yt_all_other, min=lower + epsilon, max=upper - epsilon) # TODO transform 
 
             # Reshape to match (*b, c, *n) convention
             xc = xc.permute(0, 2, 1)  # (batch_size, 2, N)  -- c=2 for (x, y)
@@ -173,7 +181,7 @@ def setup(
 
     config["image_size"] = 28  # EMNIST images are 28X28
 
-    config["transform"] = None #(-0.5, 0.5) # TODO
+    config["transform"] = None # (-0.48, 0.48) # TODO transform 
 
     # Configure convolutional models:
     config["points_per_unit"] = 4

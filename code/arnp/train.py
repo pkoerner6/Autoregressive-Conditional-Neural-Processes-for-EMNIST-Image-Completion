@@ -28,9 +28,6 @@ def train(state, model, opt, objective, gen, *, fix_noise):
     vals = []
     for batch in tqdm(gen.epoch(), total=gen.num_batches):
     # for batch in gen.epoch():
-        print("batch contexts input: ", batch["contexts"][0][0].shape) # TODO
-        print("batch contexts target: ", batch["contexts"][0][1].shape) # TODO
-
         state, obj = objective(
             state,
             model,
@@ -39,17 +36,15 @@ def train(state, model, opt, objective, gen, *, fix_noise):
             batch["yt"],
             fix_noise=fix_noise,
         )
-        print(B.to_numpy(obj)) # TODO
+        # print(B.to_numpy(obj)) # TODO
         vals.append(B.to_numpy(obj))
         # Be sure to negate the output of `objective`.
-        print(B.mean(obj)) # TODO
         val = -B.mean(obj)
         opt.zero_grad(set_to_none=True)
         val.backward()
         opt.step()
 
     vals = B.concat(*vals)
-    print(vals) # TODO
     out.kv("Loglik (T)", exp.with_err(vals, and_lower=True))
     return state, B.mean(vals) - 1.96 * B.std(vals) / B.sqrt(len(vals))
 

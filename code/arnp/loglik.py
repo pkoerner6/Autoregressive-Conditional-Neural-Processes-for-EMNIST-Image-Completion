@@ -60,6 +60,9 @@ def loglik(
         # Limit the number of samples at the batch size.
         this_num_samples = min(num_samples - done_num_samples, batch_size)
 
+        # print("yt stats:", B.min(yt), B.max(yt))
+        # print("context yc stats:", B.min(contexts[0][1]), B.max(contexts[0][1]))
+
         # Perform batch.
         state, pred = model(
             state,
@@ -70,6 +73,12 @@ def loglik(
             dtype_lik=dtype_lik,
             **kw_args,
         )
+        # print("Predicted mean (transformed) stats:", B.min(pred.mean), B.max(pred.mean))
+        # print("Pred
+        # icted var stats:", B.min(pred.var), B.max(pred.var))
+        # logpdf = pred.logpdf(yt)
+        # print("logpdf stats:", B.min(logpdf), B.max(logpdf))
+
         pred = fix_noise_in_pred(pred, fix_noise)
         this_logpdfs = pred.logpdf(B.cast(dtype_lik, yt))
 

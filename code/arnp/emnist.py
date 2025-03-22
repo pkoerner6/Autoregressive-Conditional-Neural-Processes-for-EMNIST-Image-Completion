@@ -52,7 +52,6 @@ def test_emnist():
         sys.exit()
 
     gens_eval_instances = experiment["gens_eval"]()  # Get evaluation datasets
-
     for name, gen_eval in gens_eval_instances:
         print(f"Evaluating on {name} dataset with {len(gen_eval.data)} images.")
 
@@ -76,7 +75,7 @@ def test_emnist():
             mean_loglik = B.mean(logliks) - 1.96 * B.std(logliks) / B.sqrt(len(logliks))
             print(f"Mean Log-likelihood on {name}: {mean_loglik:.4f}")
     
-    return exp, model
+    return experiment, model
 
 
 def create_original_image(test_batch):
@@ -152,8 +151,8 @@ def create_predicted_image(test_batch, model, masked_image):
     # assert pred_normalized_pixels.min().item() >= -0.5
     # assert pred_normalized_pixels.max().item() <= 0.5
     # print("pred_normalized_pixels: ", pred_normalized_pixels)
-    print("Min:", pred_normalized_pixels.min().item())
-    print("Max:", pred_normalized_pixels.max().item())
+    print("Min pred_normalized_pixels:", pred_normalized_pixels.min().item())
+    print("Max pred_normalized_pixels:", pred_normalized_pixels.max().item())
     pred_pixels = pred_normalized_pixels + 0.5 # change back to 0-1 values
     pred_pixels = pred_pixels.view(-1) 
 
@@ -207,10 +206,11 @@ def plot_original_masked_predicted(original_image, masked_image, completed_image
 
 if __name__ == "__main__":
     print("\nEvaluating the model with old loglik")
-    exp, model = test_emnist()
+    experiment, model = test_emnist()
 
     print("\nMaking predictions for two whole test images")
-    gens_eval_instances = exp["gens_eval"]()  # Get evaluation datasets
+
+    gens_eval_instances = experiment["gens_eval"]()  # Get evaluation datasets
     for name, gen_eval in gens_eval_instances:
         print(name)
         test_batches = gen_eval.generate_batch() # Get single test batch
