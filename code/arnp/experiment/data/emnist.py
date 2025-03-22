@@ -163,6 +163,7 @@ class EmnistGenerator(DataGenerator):
             # Reshape to match (*b, c, *n) convention
             xc = xc.permute(0, 2, 1)  # (batch_size, 2, N)  -- c=2 for (x, y)
             xt = xt.permute(0, 2, 1)  # (batch_size, 2, M)
+
             xt_all_non_context = xt_all_non_context.permute(0, 2, 1)  # (batch_size, 2, remaining_pixels)
             batch = {
                 "contexts": [(xc, yc)],  # Ensure correct tensor format for context
