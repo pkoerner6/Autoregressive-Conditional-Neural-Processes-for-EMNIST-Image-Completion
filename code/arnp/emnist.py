@@ -173,6 +173,9 @@ def predict_entire_image(test_batch, model):
     mean_flat = mean.elements[0][0, 0]
     mean_min = mean_flat.min()
     mean_max = mean_flat.max()
+    print("mean_min: ", mean_min)
+    print("mean_max: ", mean_max)
+
     mean_flat = (mean_flat - mean_min) / (mean_max - mean_min + 1e-8)
 
     print(f"Mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
@@ -276,50 +279,44 @@ if __name__ == "__main__":
 
         fixed_index = 10 # choose which batch to take
 
-        for num_context in [1, 40, 200, 728]:
-        # for num_context in [728]:
+        num_context_list = [1, 40, 200, 728]
+
+        fig, axes = plt.subplots(4, len(num_context_list), figsize=(4 * len(num_context_list), 12))
+
+        for col, num_context in enumerate(num_context_list):
             test_batch = gen_eval.generate_batch(
                 num_context=num_context, 
-                num_target=784-num_context,
+                num_target=784 - num_context,
                 fixed_index=fixed_index
             )
             label_id = test_batch["labels"][0].item()
             char = label_map[label_id]
             print(f"True label: {char} (label ID: {label_id})")
 
-            # Reconstruct original full image
+            # Generate all image components
             original_image = create_original_image_from_all(test_batch)
-            print("Finished creating original image")
-
-            # Masked context image (with blue background)
             masked_image = create_masked_image(test_batch)
-            print("Finished creating masked image")
-
-            # Predict mean and variance from model
             mean_image, var_image = predict_entire_image(test_batch, model)
-            # mean_image, var_image = create_predicted_image(test_batch, model, masked_image)
 
-            # Plot original, context, mean, variance
-            fig, axes = plt.subplots(4, 1, figsize=(3, 10))
+            # Plot each row
+            axes[0, col].imshow(original_image.numpy(), cmap="gray")
+            axes[0, col].set_title(f"Original\nContext={num_context}")
+            axes[0, col].axis("off")
 
-            axes[0].imshow(original_image.numpy(), cmap="gray")
-            axes[0].set_title("Original")
-            axes[0].axis("off")
+            axes[1, col].imshow(masked_image.numpy())
+            axes[1, col].set_title("Masked")
+            axes[1, col].axis("off")
 
-            axes[1].imshow(masked_image.numpy())
-            axes[1].set_title(f"Context ({num_context})")
-            axes[1].axis("off")
+            axes[2, col].imshow(mean_image.numpy(), cmap="gray")
+            axes[2, col].set_title("Mean")
+            axes[2, col].axis("off")
 
-            axes[2].imshow(mean_image.numpy(), cmap="gray")
-            axes[2].set_title("Mean")
-            axes[2].axis("off")
+            axes[3, col].imshow(var_image.numpy(), cmap="gray")
+            axes[3, col].set_title("Variance")
+            axes[3, col].axis("off")
 
-            axes[3].imshow(var_image.numpy(), cmap="gray")
-            axes[3].set_title("Variance")
-            axes[3].axis("off")
-
-            plt.tight_layout()
-            plt.savefig(f"figures/emnist_{name.replace(' ', '_').lower()}_context_{num_context}_{args.ar}.png", dpi=300, bbox_inches="tight")
-            plt.close()
+        plt.tight_layout()
+        plt.savefig(f"figures/emnist_{name.replace(' ', '_').lower()}_grid_{args.ar}.png", dpi=300, bbox_inches="tight")
+        plt.close()
 
 
