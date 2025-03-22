@@ -18,11 +18,13 @@ warnings.simplefilter("ignore", category=DeprecationWarning)
 import neuralprocesses.torch as nps
 from train import main
 from ar import ar_loglik, ar_predict
+from new_ar import ar_loglik as new_ar_loglik
+from new_ar import ar_predict as new_ar_predict
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, required=True)
-parser.add_argument("--ar", type=str, choices=["no_ar", "old_ar", "fixed_ar"])
+parser.add_argument("--ar", type=str, choices=["no_ar", "old_ar", "new_ar"])
 parser.add_argument("--num_samples", type=int, default=100)
 args = parser.parse_args()
 
@@ -48,6 +50,8 @@ def test_emnist():
         nps_loglik = nps.loglik
     elif args.ar =="old_ar":
         nps_loglik = ar_loglik
+    elif args.ar =="new_ar":
+        nps_loglik = new_ar_loglik
     else:
         print("NOT IMPLEMENTED YET!!")
         sys.exit()
@@ -105,6 +109,8 @@ def create_predicted_image(test_batch, model, masked_image):
         predict_func = nps.predict
     elif args.ar =="old_ar":
         predict_func = ar_predict
+    elif args.ar =="new_ar":
+        predict_func = new_ar_predict
     else:
         print("NOT IMPLEMENTED YET!!")
         sys.exit()
@@ -155,6 +161,8 @@ def predict_entire_image(test_batch, model):
         predict_func = nps.predict
     elif args.ar == "old_ar":
         predict_func = ar_predict
+    elif args.ar =="new_ar":
+        predict_func = new_ar_predict
     else:
         raise NotImplementedError("AR variant not implemented.")
 
@@ -170,14 +178,7 @@ def predict_entire_image(test_batch, model):
     mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] → [0, 1]
     var_flat = var.elements[0][0, 0]
 
-    mean_flat = mean.elements[0][0, 0]
-    mean_min = mean_flat.min()
-    mean_max = mean_flat.max()
-    print("mean_min: ", mean_min)
-    print("mean_max: ", mean_max)
-
-    mean_flat = (mean_flat - mean_min) / (mean_max - mean_min + 1e-8)
-
+    print(mean_flat.shape)
     print(f"Mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
     print(f"Variance - min: {var_flat.min().item():.6f}, max: {var_flat.max().item():.6f}")
 
@@ -196,6 +197,7 @@ def predict_entire_image(test_batch, model):
         mean_image[pixel_y[i], pixel_x[i]] = mean_flat[i]
         var_image[pixel_y[i], pixel_x[i]] = var_flat[i]
 
+    print("mean_image shape: ", mean_image.shape)
     return mean_image, var_image
 
 
