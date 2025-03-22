@@ -72,9 +72,6 @@ def test_emnist():
             logliks = B.concat(*logliks)
             out.kv(f"Loglik ({name})", exp.with_err(logliks, and_lower=True))
 
-            mean_loglik = B.mean(logliks) - 1.96 * B.std(logliks) / B.sqrt(len(logliks))
-            print(f"Mean Log-likelihood on {name}: {mean_loglik:.4f}")
-    
     return experiment, model
 
 
@@ -205,11 +202,23 @@ def plot_original_masked_predicted(original_image, masked_image, completed_image
 
 
 if __name__ == "__main__":
-    print("\nEvaluating the model with old loglik")
-    experiment, model = test_emnist()
+    # print("\nEvaluating the model with old loglik")
+    # experiment, model = test_emnist()
 
     print("\nMaking predictions for two whole test images")
 
+    training_results_path = os.path.join('code', '_experiments')
+
+    experiment = main(
+        model=args.model,
+        data="emnist",
+        root=training_results_path,
+        load=True,
+    )
+    model = experiment["model"]
+    model.load_state_dict(
+        torch.load(experiment["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
+    )
     gens_eval_instances = experiment["gens_eval"]()  # Get evaluation datasets
     for name, gen_eval in gens_eval_instances:
         print(name)
