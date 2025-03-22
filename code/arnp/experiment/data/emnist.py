@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 
 datasets_path = os.path.join('code', 'arnp', 'datasets')
 
+
+
 class EMNIST(tvds.EMNIST):
     def __init__(self, train=True, class_range=[0, 10], device='cpu', download=False):
         super().__init__(datasets_path, train=train, split='balanced', download=download)
@@ -171,7 +173,7 @@ def setup(
 
     config["image_size"] = 28  # EMNIST images are 28X28
 
-    config["transform"] = (-0.5, 0.5)
+    config["transform"] = None #(-0.5, 0.5) # TODO
 
     # Configure convolutional models:
     config["points_per_unit"] = 4
@@ -247,9 +249,11 @@ def setup(
 
     if visualize_images:
         visualize_emnist_image(gen_train, "Train Dataset")
+
         # EMNIST Seen (0-9) eval set
         eval_name, eval_gen = gens_eval_instances[0]
         visualize_emnist_image(eval_gen, eval_name)
+
         # EMNIST Unseen (10-46) eval set
         eval_name, eval_gen = gens_eval_instances[1]
         visualize_emnist_image(eval_gen, eval_name)
@@ -263,6 +267,7 @@ def setup(
     print_dataset_labels(gen_cv_instance, "CV Dataset")
     for name, gen_eval in gens_eval_instances:
         print_dataset_labels(gen_eval, "Test " + name)
+        
     return gen_train, gen_cv, gens_eval
 
 register_data("emnist", setup)

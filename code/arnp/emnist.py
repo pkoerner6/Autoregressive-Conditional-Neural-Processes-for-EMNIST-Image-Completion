@@ -8,6 +8,8 @@ import sys
 from tqdm import tqdm
 import lab as B
 import wbml.out as out
+import experiment as exp
+
 
 import warnings
 warnings.simplefilter("ignore", category=DeprecationWarning)
@@ -28,17 +30,17 @@ args = parser.parse_args()
 def test_emnist():
     training_results_path = os.path.join('code', '_experiments')
 
-    exp = main(
+    experiment = main(
         model=args.model,
         data="emnist",
         root=training_results_path,
         load=True,
     )
-    print(f"Loading model from: {exp['wd'].root}")
+    print(f"Loading model from: {experiment['wd'].root}")
 
-    model = exp["model"]
+    model = experiment["model"]
     model.load_state_dict(
-        torch.load(exp["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
+        torch.load(experiment["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
     )
 
     if args.ar =="no_ar":
@@ -49,7 +51,7 @@ def test_emnist():
         print("NOT IMPLEMENTED YET!!")
         sys.exit()
 
-    gens_eval_instances = exp["gens_eval"]()  # Get evaluation datasets
+    gens_eval_instances = experiment["gens_eval"]()  # Get evaluation datasets
 
     for name, gen_eval in gens_eval_instances:
         print(f"Evaluating on {name} dataset with {len(gen_eval.data)} images.")
@@ -58,7 +60,6 @@ def test_emnist():
             logliks = []
 
             for batch in tqdm(gen_eval.epoch(), total=gen_eval.num_batches):
-
                 loglik = nps_loglik(
                     model, 
                     batch["contexts"], 
@@ -66,8 +67,8 @@ def test_emnist():
                     batch["yt"], 
                     normalise=True
                 )
-                # Save log-likelihoods
                 logliks.append(B.to_numpy(loglik))
+                # print(B.to_numpy(loglik))
 
             logliks = B.concat(*logliks)
             out.kv(f"Loglik ({name})", exp.with_err(logliks, and_lower=True))
