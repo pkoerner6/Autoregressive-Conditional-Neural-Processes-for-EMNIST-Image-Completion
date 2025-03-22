@@ -104,8 +104,6 @@ class EmnistGenerator(DataGenerator):
             dict: A batch with keys "contexts", "xt", and "yt".
         """
         with B.on_device(self.device):
-            torch.manual_seed(self.seed)
-            
             # Select a batch of images randomly
             indices = torch.randint(0, len(self.data), (self.batch_size,))
             images = self.data[indices].to(self.device)  # Shape: (batch_size, 1, 28, 28)
@@ -195,7 +193,7 @@ def setup(
     )
     gen_cv = lambda: EmnistGenerator(
         dtype=torch.float32, 
-        seed=0, 
+        seed=1, 
         num_tasks=num_tasks_cv, 
         batch_size=args.batch_size,
         train=False,
@@ -208,7 +206,7 @@ def setup(
         return [
             ("EMNIST Seen (0-9)", EmnistGenerator(
                 torch.float32, 
-                seed=0, 
+                seed=2, 
                 batch_size=args.batch_size,
                 num_tasks=num_tasks_eval, 
                 train=False,
@@ -218,7 +216,7 @@ def setup(
             )),
             ("EMNIST Unseen (10-46)", EmnistGenerator(
                 torch.float32, 
-                seed=0, 
+                seed=3, 
                 batch_size=args.batch_size,
                 num_tasks=num_tasks_eval, 
                 train=False,

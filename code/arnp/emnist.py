@@ -5,6 +5,9 @@ import numpy as np
 import torch
 import os
 import sys
+from tqdm import tqdm
+import lab as B
+import wbml.out as out
 
 import warnings
 warnings.simplefilter("ignore", category=DeprecationWarning)
@@ -30,32 +33,47 @@ def test_emnist():
         data="emnist",
         root=training_results_path,
         load=True,
-        # ar=(args.ar=="old_ar") # TODO remove for newly trained
     )
     print(f"Loading model from: {exp['wd'].root}")
+
     model = exp["model"]
     model.load_state_dict(
         torch.load(exp["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
     )
 
+    if args.ar =="no_ar":
+        nps_loglik = nps.loglik
+    elif args.ar =="old_ar":
+        nps_loglik = ar_loglik
+    else:
+        print("NOT IMPLEMENTED YET!!")
+        sys.exit()
+
     gens_eval_instances = exp["gens_eval"]()  # Get evaluation datasets
+
     for name, gen_eval in gens_eval_instances:
         print(f"Evaluating on {name} dataset with {len(gen_eval.data)} images.")
 
-        batch = gen_eval.generate_batch()
-
-        if args.ar =="no_ar":
-            nps_loglik = nps.loglik
-        elif args.ar =="old_ar":
-            nps_loglik = ar_loglik
-        else:
-            print("NOT IMPLEMENTED YET!!")
-            sys.exit()
-        
         with torch.no_grad():
-            loglike = nps_loglik(model, batch["contexts"], batch["xt"], batch["yt"], normalise=True)
+            logliks = []
 
-        print(f"Log-likelihood on {name}: {loglike.mean().item()}")
+            for batch in tqdm(gen_eval.epoch(), total=gen_eval.num_batches):
+
+                loglik = nps_loglik(
+                    model, 
+                    batch["contexts"], 
+                    batch["xt"], 
+                    batch["yt"], 
+                    normalise=True
+                )
+                # Save log-likelihoods
+                logliks.append(B.to_numpy(loglik))
+
+            logliks = B.concat(*logliks)
+            out.kv(f"Loglik ({name})", exp.with_err(logliks, and_lower=True))
+
+            mean_loglik = B.mean(logliks) - 1.96 * B.std(logliks) / B.sqrt(len(logliks))
+            print(f"Mean Log-likelihood on {name}: {mean_loglik:.4f}")
     
     return exp, model
 

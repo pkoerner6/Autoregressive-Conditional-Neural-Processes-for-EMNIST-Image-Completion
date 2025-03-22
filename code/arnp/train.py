@@ -16,6 +16,8 @@ from wbml.experiment import WorkingDirectory
 import neuralprocesses.torch as nps
 import torch
 
+from loglik import loglik
+
 __all__ = ["main"]
 
 warnings.filterwarnings("ignore", category=ToDenseWarning)
@@ -26,6 +28,9 @@ def train(state, model, opt, objective, gen, *, fix_noise):
     vals = []
     for batch in tqdm(gen.epoch(), total=gen.num_batches):
     # for batch in gen.epoch():
+        print("batch contexts: ", batch["contexts"][0][0].shape)
+        print("batch contexts: ", batch["contexts"][0][1].shape)
+
         state, obj = objective(
             state,
             model,
@@ -34,14 +39,19 @@ def train(state, model, opt, objective, gen, *, fix_noise):
             batch["yt"],
             fix_noise=fix_noise,
         )
+        print(B.to_numpy(obj))
         vals.append(B.to_numpy(obj))
         # Be sure to negate the output of `objective`.
+        print(B.mean(obj))
         val = -B.mean(obj)
+        # print("B.to_numpy(obj): ", B.to_numpy(obj))
+        # print("val: ", val)
         opt.zero_grad(set_to_none=True)
         val.backward()
         opt.step()
 
     vals = B.concat(*vals)
+    print(vals)
     out.kv("Loglik (T)", exp.with_err(vals, and_lower=True))
     return state, B.mean(vals) - 1.96 * B.std(vals) / B.sqrt(len(vals))
 
@@ -528,12 +538,14 @@ def main(**kw_args):
     # Setup training objective.
     if args.objective == "loglik":
         objective = partial(
-            nps.loglik,
+            # nps.loglik,
+            loglik,
             num_samples=args.num_samples,
             normalise=not args.unnormalised,
         )
         objective_cv = partial(
-            nps.loglik,
+            # nps.loglik,
+            loglik,
             num_samples=args.num_samples,
             normalise=not args.unnormalised,
         )
@@ -541,7 +553,8 @@ def main(**kw_args):
             (
                 "Loglik",
                 partial(
-                    nps.loglik,
+                    # nps.loglik,
+                    loglik,
                     num_samples=args.evaluate_num_samples,
                     batch_size=args.evaluate_batch_size,
                     normalise=not args.unnormalised,
@@ -575,7 +588,8 @@ def main(**kw_args):
             (
                 "Loglik",
                 partial(
-                    nps.loglik,
+                    # nps.loglik,
+                    loglik,
                     num_samples=args.evaluate_num_samples,
                     batch_size=args.evaluate_batch_size,
                     normalise=not args.unnormalised,

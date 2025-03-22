@@ -350,7 +350,7 @@ def ar_loglik(
 
         # Compute logpdf.
         state, pred = model(state, contexts, AggregateInput((xti, i_out)))
-        mean = pred.vectorised_normal.mean  # Extract mean (Dense object)
+        # mean = pred.vectorised_normal.mean  # Extract mean (Dense object)
         # print("Predicted mean tensor shape: ", mean.mat.shape) # (b, c, n) B: batch size, c: dimensionality of the inputs/outputs or the number of channel, n: number of data points
 
         logpdfs.append(pred.logpdf(Aggregate(yti)))
