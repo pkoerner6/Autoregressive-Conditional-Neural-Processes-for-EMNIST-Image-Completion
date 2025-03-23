@@ -168,8 +168,8 @@ def create_original_image_from_all(test_batch, plot=False):
 
 
 if __name__ == "__main__":
-    # print(f"\nEvaluating the model with {args.ar}")
-    # experiment, model = test_emnist()
+    print(f"\nEvaluating the model with {args.ar}")
+    experiment, model = test_emnist()
 
 
     training_results_path = os.path.join('code', '_experiments')
@@ -184,7 +184,6 @@ if __name__ == "__main__":
         torch.load(experiment["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
     )
 
-    # Create label map for EMNIST
     label_map = {}
     with open("code/arnp/datasets/EMNIST/others/emnist-balanced-mapping.txt", "r") as f:
         for line in f:
