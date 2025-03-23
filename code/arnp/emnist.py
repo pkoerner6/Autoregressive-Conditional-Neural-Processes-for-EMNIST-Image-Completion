@@ -198,7 +198,7 @@ if __name__ == "__main__":
 
         fixed_index = 1 # choose which batch to take
 
-        num_context_list = [1, 40, 200, 300]
+        num_context_list = [1, 50, 100, 200]
 
         fig, axes = plt.subplots(4, len(num_context_list), figsize=(4 * len(num_context_list), 12))
 
