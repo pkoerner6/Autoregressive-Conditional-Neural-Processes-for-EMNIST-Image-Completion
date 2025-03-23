@@ -24,7 +24,7 @@ from new_ar import ar_predict as new_ar_predict
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, required=True)
-parser.add_argument("--ar", type=str, choices=["no_ar", "old_ar", "new_ar"])
+parser.add_argument("--ar", type=str, choices=["no_ar", "old_ar", "new_ar"], required=True)
 parser.add_argument("--num_samples", type=int, default=100)
 args = parser.parse_args()
 
@@ -72,7 +72,6 @@ def test_emnist():
                     normalise=True
                 )
                 logliks.append(B.to_numpy(loglik))
-                # print(B.to_numpy(loglik))
 
             logliks = B.concat(*logliks)
             out.kv(f"Loglik ({name})", exp.with_err(logliks, and_lower=True))
@@ -100,62 +99,6 @@ def create_masked_image(test_batch):
     return masked_image
 
 
-def create_predicted_image(test_batch, model, masked_image):
-    xt_single = test_batch["xt_all_non_context"].elements[0][0][0].T  # Extract missing pixel coordinates
-    pixel_x = torch.round((xt_single[:, 0] + 1) * 13.5).long()
-    pixel_y = torch.round((xt_single[:, 1] + 1) * 13.5).long()
-
-    if args.ar =="no_ar":
-        predict_func = nps.predict
-    elif args.ar =="old_ar":
-        predict_func = ar_predict
-    elif args.ar =="new_ar":
-        predict_func = new_ar_predict
-    else:
-        print("NOT IMPLEMENTED YET!!")
-        sys.exit()
-    
-    with torch.no_grad():
-        mean, var, _, _ = predict_func(
-            model,
-            test_batch["contexts"],
-            test_batch["xt_all_non_context"],
-            num_samples=args.num_samples,
-        )
-    pred_normalized_pixel_mean = mean.elements[0][0, 0]
-    pred_normalized_pixel_var = var.elements[0][0, 0]
-
-    print("Min pred_normalized_pixel_mean:", pred_normalized_pixel_mean.min().item())
-    print("Max pred_normalized_pixel_mean:", pred_normalized_pixel_mean.max().item())
-    print("Min pred_normalized_pixel_var:", pred_normalized_pixel_var.min().item())
-    print("Max pred_normalized_pixel_var:", pred_normalized_pixel_var.max().item())
-    pred_pixel_mean = pred_normalized_pixel_mean + 0.5 # change back to 0-1 values
-    pred_pixel_mean = pred_pixel_mean.view(-1) 
-    pred_pixel_var = pred_normalized_pixel_var.view(-1) 
-
-    # Convert coordinates from [-1,1] to pixel indices [0,27]
-    pixel_x = torch.round((xt_single[:, 0] + 1) * 13.5).long()
-    pixel_y = torch.round((xt_single[:, 1] + 1) * 13.5).long()
-    assert pixel_x.min().item() == 0
-    assert pixel_x.max().item() == 27
-    assert pixel_y.min().item() == 0
-    assert pixel_y.max().item() == 27
-
-    # completed_image_mean = torch.clone(masked_image)
-    # completed_image_var = torch.clone(masked_image)
-    mean_image = torch.zeros((28, 28))
-    var_image = torch.zeros((28, 28))
-
-    # Fill in the model-predicted pixels
-    for i in range(len(pixel_x)):
-        grayscale_value_mean = (pred_pixel_mean[i].item())
-        mean_image[pixel_y[i], pixel_x[i]] = grayscale_value_mean  # Add to completed image
-        grayscale_value_var = (pred_pixel_var[i].item())
-        var_image[pixel_y[i], pixel_x[i]] = grayscale_value_var  # Add to completed image
-
-    return mean_image, var_image
-
-
 def predict_entire_image(test_batch, model):
     if args.ar == "no_ar":
         predict_func = nps.predict
@@ -166,19 +109,21 @@ def predict_entire_image(test_batch, model):
     else:
         raise NotImplementedError("AR variant not implemented.")
 
+    single_context = [(xc[0:1], yc[0:1]) for xc, yc in test_batch["contexts"]]
+    single_xt_all = nps.AggregateInput((test_batch["xt_all"].elements[0][0][0:1], 0))
+
     with torch.no_grad():
         mean, var, _, _ = predict_func(
             model,
-            test_batch["contexts"],
-            test_batch["xt_all"],
+            single_context, #test_batch["contexts"],
+            single_xt_all, #test_batch["xt_all"],
             num_samples=args.num_samples,
         )
 
     # Get predictions for a single image (assumes batch_size = 1)
-    mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] → [0, 1]
+    mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1]
     var_flat = var.elements[0][0, 0]
 
-    print(mean_flat.shape)
     print(f"Mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
     print(f"Variance - min: {var_flat.min().item():.6f}, max: {var_flat.max().item():.6f}")
 
@@ -189,41 +134,13 @@ def predict_entire_image(test_batch, model):
     pixel_x = torch.clamp(pixel_x, 0, 27)
     pixel_y = torch.clamp(pixel_y, 0, 27)
 
-    # Create blank images
     mean_image = torch.zeros((28, 28))
     var_image = torch.zeros((28, 28))
-
     for i in range(len(pixel_x)):
         mean_image[pixel_y[i], pixel_x[i]] = mean_flat[i]
         var_image[pixel_y[i], pixel_x[i]] = var_flat[i]
 
-    print("mean_image shape: ", mean_image.shape)
     return mean_image, var_image
-
-
-
-def plot_image_from_xt_yt(xt_all, yt_all, title="Reconstructed Image from xt_all and yt_all"):
-    # De-normalize pixel values from [-0.5, 0.5] → [0, 1]
-    pixel_values = yt_all[0] + 0.5  # shape: (784,)
-
-    # Convert coordinates from [-1, 1] → [0, 27]
-    pixel_x = torch.round((xt_all[0] + 1) * 13.5).long()
-    pixel_y = torch.round((xt_all[1] + 1) * 13.5).long()
-
-    # Clamp to avoid indexing errors
-    pixel_x = torch.clamp(pixel_x, 0, 27)
-    pixel_y = torch.clamp(pixel_y, 0, 27)
-
-    # Reconstruct the image
-    image = torch.zeros((28, 28))
-    for x, y, val in zip(pixel_x, pixel_y, pixel_values):
-        image[y, x] = val  # (y, x) is correct for image coordinates
-
-    # Plot the image
-    plt.imshow(image.numpy(), cmap="gray")
-    plt.title(title)
-    plt.axis("off")
-    plt.show()
 
 
 def create_original_image_from_all(test_batch, plot=False):
@@ -251,7 +168,7 @@ def create_original_image_from_all(test_batch, plot=False):
 
 
 if __name__ == "__main__":
-    # print("\nEvaluating the model with old loglik")
+    # print(f"\nEvaluating the model with {args.ar}")
     # experiment, model = test_emnist()
 
 
@@ -269,7 +186,7 @@ if __name__ == "__main__":
 
     # Create label map for EMNIST
     label_map = {}
-    with open("code/arnp/datasets/EMNIST/raw/emnist-balanced-mapping.txt", "r") as f:
+    with open("code/arnp/datasets/EMNIST/others/emnist-balanced-mapping.txt", "r") as f:
         for line in f:
             label_id, ascii_code = map(int, line.strip().split())
             label_map[label_id] = chr(ascii_code)
@@ -277,18 +194,19 @@ if __name__ == "__main__":
 
     gens_eval_instances = experiment["gens_eval"]()  # Get evaluation datasets
     for name, gen_eval in gens_eval_instances:
-        print(name)
+        print(f"\n{name}")
 
-        fixed_index = 10 # choose which batch to take
+        fixed_index = 1 # choose which batch to take
 
-        num_context_list = [1, 40, 200, 728]
+        num_context_list = [1, 40, 200, 300]
 
         fig, axes = plt.subplots(4, len(num_context_list), figsize=(4 * len(num_context_list), 12))
 
         for col, num_context in enumerate(num_context_list):
+            print("Number of context pixels: ", num_context)
             test_batch = gen_eval.generate_batch(
                 num_context=num_context, 
-                num_target=784 - num_context,
+                num_target=784,
                 fixed_index=fixed_index
             )
             label_id = test_batch["labels"][0].item()
@@ -300,25 +218,29 @@ if __name__ == "__main__":
             masked_image = create_masked_image(test_batch)
             mean_image, var_image = predict_entire_image(test_batch, model)
 
-            # Plot each row
             axes[0, col].imshow(original_image.numpy(), cmap="gray")
-            axes[0, col].set_title(f"Original\nContext={num_context}")
             axes[0, col].axis("off")
 
             axes[1, col].imshow(masked_image.numpy())
-            axes[1, col].set_title("Masked")
             axes[1, col].axis("off")
 
             axes[2, col].imshow(mean_image.numpy(), cmap="gray")
-            axes[2, col].set_title("Mean")
             axes[2, col].axis("off")
 
             axes[3, col].imshow(var_image.numpy(), cmap="gray")
-            axes[3, col].set_title("Variance")
             axes[3, col].axis("off")
 
-        plt.tight_layout()
-        plt.savefig(f"figures/emnist_{name.replace(' ', '_').lower()}_grid_{args.ar}.png", dpi=300, bbox_inches="tight")
+            axes[0, col].set_title(f"{num_context}", fontsize=20)
+        
+        fig.text(0.5, 0.95, "Number of context points", ha="center", fontsize=24)
+
+        fig.text(0.05, 0.8, "Original", ha="center", va="center", rotation=90, fontsize=20)
+        fig.text(0.05, 0.57, "Masked", ha="center", va="center", rotation=90, fontsize=20)
+        fig.text(0.05, 0.35, "Mean", ha="center", va="center", rotation=90, fontsize=20)
+        fig.text(0.05, 0.13, "Variance", ha="center", va="center", rotation=90, fontsize=20)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.93])
+        plt.savefig(f"figures/emnist_{name.replace(' ', '_').lower()}_{args.model}_{args.ar}.png", dpi=300, bbox_inches="tight")
         plt.close()
 
 

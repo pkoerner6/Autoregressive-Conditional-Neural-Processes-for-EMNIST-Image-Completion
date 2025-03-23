@@ -384,25 +384,25 @@ def ar_loglik(
     covariance_est="bayesian",   # Choose: "scm", "bayesian", or "shrinkage"
     nu_p=100                  # Extra parameter for Bayesian estimation
 ):
-    print("Entering ar_loglik")
+    # print("Entering ar_loglik")
     
     # Generate autoregressive joint samples.
     state, mean, var, ft, samples = ar_predict(state, model, contexts, xt, num_samples=num_samples, order=order)
-    print("After ar_predict:")
-    for i, s in enumerate(samples):
-        print(f"  samples[{i}] shape: {s.shape}")
+    # print("After ar_predict:")
+    # for i, s in enumerate(samples):
+    #     print(f"  samples[{i}] shape: {s.shape}")
     
     # Flatten each element of the samples Aggregate; each becomes [num_samples, d_i].
     samples_flat = []
     for i, s in enumerate(samples):
         # Skip any tensors with empty dimensions
         if 0 in s.shape:
-            print(f"Skipping empty tensor samples[{i}] with shape {s.shape}")
+            # print(f"Skipping empty tensor samples[{i}] with shape {s.shape}")
             continue
         
         # Check if the tensor has the correct first dimension
         if s.shape[0] != num_samples:
-            print(f"Warning: Tensor {i} has first dimension {s.shape[0]} instead of {num_samples}")
+            # print(f"Warning: Tensor {i} has first dimension {s.shape[0]} instead of {num_samples}")
             continue
             
         # Reshape and add to the list
@@ -411,62 +411,62 @@ def ar_loglik(
     # Convert any non-torch tensors
     samples_flat = [torch.as_tensor(s) if not isinstance(s, torch.Tensor) else s for s in samples_flat]
     
-    for i, s in enumerate(samples_flat):
-        print(f"After flattening: samples_flat[{i}] shape: {s.shape}")
+    # for i, s in enumerate(samples_flat):
+    #     print(f"After flattening: samples_flat[{i}] shape: {s.shape}")
     
     # Skip concatenation if all tensors were empty
     if len(samples_flat) == 0:
-        print("All tensors are empty, returning zero loglikelihood")
+        # print("All tensors are empty, returning zero loglikelihood")
         return state, torch.tensor(0.0, device=mean[0].device)
     
     # Concatenate all flattened sample tensors along the feature dimension.
     samples_vec = torch.cat(samples_flat, dim=-1)
-    print(f"Concatenated samples_vec shape: {samples_vec.shape}")
+    # print(f"Concatenated samples_vec shape: {samples_vec.shape}")
     
     # Flatten the observed targets, also skipping empty ones
     yt_flat = []
     for i, s in enumerate(yt):
         if 0 in s.shape:
-            print(f"Skipping empty tensor yt[{i}] with shape {s.shape}")
+            # print(f"Skipping empty tensor yt[{i}] with shape {s.shape}")
             continue
         yt_flat.append(s.reshape(-1))
     
     # Check if all observed targets are empty
     if len(yt_flat) == 0:
-        print("All targets are empty, returning zero loglikelihood")
+        # print("All targets are empty, returning zero loglikelihood")
         return state, torch.tensor(0.0, device=mean[0].device)
     
-    for i, s in enumerate(yt_flat):
-        print(f"After flattening: yt_flat[{i}] shape: {s.shape}")
+    # for i, s in enumerate(yt_flat):
+    #     print(f"After flattening: yt_flat[{i}] shape: {s.shape}")
     
     observed_vec = torch.cat(yt_flat, dim=-1)
-    print(f"Concatenated observed_vec shape: {observed_vec.shape}")
+    # print(f"Concatenated observed_vec shape: {observed_vec.shape}")
     
     # Compute empirical mean across AR samples.
     mu_emp = torch.mean(samples_vec, dim=0)
-    print(f"Empirical mean shape: {mu_emp.shape}")
+    # print(f"Empirical mean shape: {mu_emp.shape}")
     
     # --- Covariance estimation ---
     if covariance_est == "scm":
         cov = compute_cov_scm(samples_vec)
-        print("Using SCM covariance")
+        # print("Using SCM covariance")
     elif covariance_est == "bayesian":
         scm_cov = compute_cov_scm(samples_vec)
         psi = torch.diag(torch.diag(scm_cov))
         cov = compute_cov_bayesian(samples_vec, psi, nu_p=nu_p)
-        print("Using Bayesian covariance")
+        # print("Using Bayesian covariance")
     elif covariance_est == "shrinkage":
         cov = compute_cov_shrinkage(samples_vec)
-        print("Using Shrinkage covariance")
+        # print("Using Shrinkage covariance")
     else:
         raise ValueError(f"Unknown covariance estimation method: {covariance_est}")
     
-    print(f"Covariance matrix shape before stabilization: {cov.shape}")
+    # print(f"Covariance matrix shape before stabilization: {cov.shape}")
     # Symmetrize and add a small diagonal term for numerical stability.
     cov = 0.5 * (cov + cov.t()) + 1e-12 * torch.eye(cov.shape[0], device=cov.device)
-    print("Covariance matrix stabilized")
-    print("Covariance (first 5x5 block):")
-    print(cov[:5, :5])
+    # print("Covariance matrix stabilized")
+    # print("Covariance (first 5x5 block):")
+    # print(cov[:5, :5])
     # -------------------------------
     
     # Construct a MultivariateNormal distribution with the estimated mean and covariance.
@@ -474,13 +474,13 @@ def ar_loglik(
         mvn_dist = torch.distributions.MultivariateNormal(mu_emp, covariance_matrix=cov)
         logpdf = mvn_dist.log_prob(observed_vec)
     except Exception as e:
-        print("Error constructing multivariate normal distribution:", e)
+        # print("Error constructing multivariate normal distribution:", e)
         raise ValueError("Computed logpdf is NaN. Aborting execution.")
     
-    print(f"Final logpdf: {logpdf}")
+    # print(f"Final logpdf: {logpdf}")
     if normalise:
         logpdf = logpdf / mu_emp.shape[-1]
-    print("Exiting ar_loglik")
+    # print("Exiting ar_loglik")
     return state, logpdf
 
 

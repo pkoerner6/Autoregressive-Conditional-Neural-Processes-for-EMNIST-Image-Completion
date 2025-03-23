@@ -151,12 +151,6 @@ class EmnistGenerator(DataGenerator):
             # yc = torch.clamp(yc, min=lower + epsilon, max=upper - epsilon) # TODO transform 
             # yt = torch.clamp(yt, min=lower + epsilon, max=upper - epsilon) # TODO transform 
 
-            # Extract remaining pixels for full image completion (excluding context pixels)
-            xt_all_non_context = B.take(pixel_coords, non_context_indices, axis=1)  # (batch_size, remaining_pixels, 2)
-            yt_all_non_context = B.take(images, non_context_indices, axis=2) - 0.5  # (batch_size, 1, remaining_pixels)
-
-            # yt_all_non_context = torch.clamp(yt_all_non_context, min=lower + epsilon, max=upper - epsilon) # TODO transform 
-            
             xt_all = pixel_coords.permute(0, 2, 1)  # (batch_size, 2, 784)
             yt_all = images - 0.5 
 
@@ -164,13 +158,10 @@ class EmnistGenerator(DataGenerator):
             xc = xc.permute(0, 2, 1)  # (batch_size, 2, N)  -- c=2 for (x, y)
             xt = xt.permute(0, 2, 1)  # (batch_size, 2, M)
 
-            xt_all_non_context = xt_all_non_context.permute(0, 2, 1)  # (batch_size, 2, remaining_pixels)
             batch = {
                 "contexts": [(xc, yc)],  # Ensure correct tensor format for context
                 "xt": AggregateInput((xt, 0)),  # Ensure xt follows correct convention
                 "yt": Aggregate(yt),  # Ensure yt follows correct convention
-                "xt_all_non_context": AggregateInput((xt_all_non_context, 0)),  # All pixels except context
-                "yt_all_non_context": Aggregate(yt_all_non_context),  # Ground truth values for all other pixels
                 "xt_all": AggregateInput((xt_all, 0)), 
                 "yt_all": Aggregate(yt_all),   
                 "labels": labels 
