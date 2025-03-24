@@ -11,7 +11,7 @@ to the task of image completion on the **EMNIST** dataset of handwritten digits 
 
 ## Overview
 
-In the original paper, Autoregressive Conditional Neural Processes (AR-CNPs) were evaluated primarily on regression-style tasks. This project expands the experimental scope to include:
+In the original paper, Autoregressive Neural Processes were evaluated primarily on regression-style tasks. This project expands the experimental scope to include:
 
 - **EMNIST image completion**
 - Comparative evaluation of **ConvCNPs**, **ConvGNPs**, and **AR-ConvCNPs**
