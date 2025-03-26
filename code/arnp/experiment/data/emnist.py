@@ -46,7 +46,9 @@ class EmnistGenerator(DataGenerator):
             train=True,
             subset=None,  # "cv" or "eval" for non-overlapping validation/evaluation sets
             device="cpu",
-            class_range=[0, 47]
+            class_range=[0, 47],
+            training_epoch=None,
+            max_epochs=None,
         ):
         """
         Args:
@@ -63,6 +65,8 @@ class EmnistGenerator(DataGenerator):
         super().__init__(dtype=dtype, seed=seed, num_tasks=num_tasks, batch_size=batch_size, device=device)
         
         self.seed = seed
+        self.training_epoch = training_epoch
+        self.max_epochs = max_epochs
         
         # torch.manual_seed(seed)
         # torch.cuda.manual_seed_all(seed) 
@@ -105,6 +109,7 @@ class EmnistGenerator(DataGenerator):
         Returns:
             dict: A batch with keys "contexts", "xt", and "yt".
         """
+        
         with B.on_device(self.device):
             # Select a batch of images randomly
             if fixed_index is not None:
@@ -126,16 +131,30 @@ class EmnistGenerator(DataGenerator):
             pixel_coords = torch.stack([row_grid.flatten(), col_grid.flatten()], dim=-1)  # Shape: (784, 2)
             pixel_coords = pixel_coords.to(self.device).expand(self.batch_size, -1, -1)  # (batch_size, 784, 2)
 
-            # Randomly sample context and target indices
-            if num_context is None:
-                num_context = torch.randint(3, 197, (1,)).item()
-            if num_target is None:
-                num_target = torch.randint(3, 200 - num_context, (1,)).item()
+            if self.training_epoch is not None and num_target is None:
+                progress = self.training_epoch / self.max_epochs
+
+                # Linearly interpolate context and target sizes
+                max_context = 397
+                min_context = 3
+                num_context = int(max_context * (1 - progress)) + min_context
+                num_context = min(num_context, 784 - 3)
+
+                max_target = 400
+                min_target = 3
+                num_target = int(min_target + progress * (max_target - min_target))
+                num_target = min(num_target, 784 - num_context)  # ensure it fits
+            else:
+                # num_context = torch.randint(3, 197, (1,)).item()
+                # num_target = torch.randint(3, 200 - num_context, (1,)).item()
+                if num_context is None:
+                    num_context = torch.randint(3, 197, (1,)).item() 
+                if num_target is None:
+                    num_target = torch.randint(3, 200 - num_context, (1,)).item()
 
             all_indices = torch.randperm(28*28)  # Shuffle pixel indices
             context_indices = all_indices[:num_context]
             target_indices = all_indices[num_context : num_context + num_target]
-            non_context_indices = all_indices[num_context:]
 
             # Extract context and target pixel coordinates
             xc = B.take(pixel_coords, context_indices, axis=1)
@@ -178,6 +197,8 @@ def setup(
         num_tasks_eval, 
         device, 
         visualize_images=False,
+        training_epoch=None,
+        max_epochs=None,
     ):
     config["default"]["rate"] = 1e-4
     config["default"]["epochs"] = 200
@@ -206,7 +227,9 @@ def setup(
         train=True,
         subset=None,
         device=device,
-        class_range=[0, 10]
+        class_range=[0, 10],
+        training_epoch=training_epoch,
+        max_epochs=max_epochs,
     )
     gen_cv = lambda: EmnistGenerator(
         dtype=torch.float32, 
@@ -216,7 +239,9 @@ def setup(
         train=False,
         subset="cv",
         device=device,
-        class_range=[0, 10]
+        class_range=[0, 10],
+        training_epoch=training_epoch,
+        max_epochs=max_epochs,
     )
 
     def gens_eval():
@@ -229,7 +254,9 @@ def setup(
                 train=False,
                 subset="eval",
                 device=device,
-                class_range=[0, 10]
+                class_range=[0, 10],
+                training_epoch=None,
+                max_epochs=None,
             )),
             ("EMNIST Unseen (10-46)", EmnistGenerator(
                 torch.float32, 
@@ -239,49 +266,52 @@ def setup(
                 train=False,
                 subset="eval",
                 device=device,
-                class_range=[10, 47]
+                class_range=[10, 47],
+                training_epoch=None,
+                max_epochs=None,
             ))
         ]
     
-    # The EMNIST balanced dataset contains 131,600 images
-    print(f"Training Dataset Size: {len(gen_train.data)}") # 112,800, but only take 0-9 so only 24,000
-    gen_cv_instance = gen_cv() 
-    print(f"CV Dataset Size: {len(gen_cv_instance.data)}") # 9,400, but only take 0-9 so only 2000
-    gens_eval_instances = gens_eval() 
-    for name, gen_eval in gens_eval_instances:
-        print(f"Test {name} Dataset Size: {len(gen_eval.data)}") # EMNIST Seen (0-9): 2000; EMNIST Unseen (10-46): 7400
+    if training_epoch==0:
+        # The EMNIST balanced dataset contains 131,600 images
+        print(f"Training Dataset Size: {len(gen_train.data)}") # 112,800, but only take 0-9 so only 24,000
+        gen_cv_instance = gen_cv() 
+        print(f"CV Dataset Size: {len(gen_cv_instance.data)}") # 9,400, but only take 0-9 so only 2000
+        gens_eval_instances = gens_eval() 
+        for name, gen_eval in gens_eval_instances:
+            print(f"Test {name} Dataset Size: {len(gen_eval.data)}") # EMNIST Seen (0-9): 2000; EMNIST Unseen (10-46): 7400
 
-    def visualize_emnist_image(generator, dataset_name):
-        """Visualizes the first image from the dataset."""
-        for i in range(1):
-            image, label = generator.data[i].cpu(), generator.targets[i].cpu()
-            image = image.squeeze(0)
+        def visualize_emnist_image(generator, dataset_name):
+            """Visualizes the first image from the dataset."""
+            for i in range(1):
+                image, label = generator.data[i].cpu(), generator.targets[i].cpu()
+                image = image.squeeze(0)
 
-            plt.imshow(image, cmap="gray")
-            plt.title(f"{dataset_name} - Label: {label.item()}")
-            plt.axis("off")
-            plt.show()
+                plt.imshow(image, cmap="gray")
+                plt.title(f"{dataset_name} - Label: {label.item()}")
+                plt.axis("off")
+                plt.show()
 
-    if visualize_images:
-        visualize_emnist_image(gen_train, "Train Dataset")
+        if visualize_images:
+            visualize_emnist_image(gen_train, "Train Dataset")
 
-        # EMNIST Seen (0-9) eval set
-        eval_name, eval_gen = gens_eval_instances[0]
-        visualize_emnist_image(eval_gen, eval_name)
+            # EMNIST Seen (0-9) eval set
+            eval_name, eval_gen = gens_eval_instances[0]
+            visualize_emnist_image(eval_gen, eval_name)
 
-        # EMNIST Unseen (10-46) eval set
-        eval_name, eval_gen = gens_eval_instances[1]
-        visualize_emnist_image(eval_gen, eval_name)
+            # EMNIST Unseen (10-46) eval set
+            eval_name, eval_gen = gens_eval_instances[1]
+            visualize_emnist_image(eval_gen, eval_name)
 
-    # Print unique labels
-    def print_dataset_labels(generator, dataset_name):
-        """Print all unique labels in the dataset."""
-        unique_labels = torch.unique(generator.targets).tolist()
-        print(f"{dataset_name} contains {len(unique_labels)} unique labels: {unique_labels}")
-    print_dataset_labels(gen_train, "Train Dataset")
-    print_dataset_labels(gen_cv_instance, "CV Dataset")
-    for name, gen_eval in gens_eval_instances:
-        print_dataset_labels(gen_eval, "Test " + name)
+        # Print unique labels
+        def print_dataset_labels(generator, dataset_name):
+            """Print all unique labels in the dataset."""
+            unique_labels = torch.unique(generator.targets).tolist()
+            print(f"{dataset_name} contains {len(unique_labels)} unique labels: {unique_labels}")
+        print_dataset_labels(gen_train, "Train Dataset")
+        print_dataset_labels(gen_cv_instance, "CV Dataset")
+        for name, gen_eval in gens_eval_instances:
+            print_dataset_labels(gen_eval, "Test " + name)
         
     return gen_train, gen_cv, gens_eval
 

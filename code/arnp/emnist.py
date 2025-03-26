@@ -17,9 +17,9 @@ warnings.simplefilter("ignore", category=DeprecationWarning)
 
 import neuralprocesses.torch as nps
 from train import main
-from ar import ar_loglik, ar_predict
-from new_ar import ar_loglik as new_ar_loglik
-from new_ar import ar_predict as new_ar_predict
+# from ar import ar_loglik, ar_predict
+# from new_ar import ar_loglik as new_ar_loglik
+# from new_ar import ar_predict as new_ar_predict
 
 
 parser = argparse.ArgumentParser()
@@ -49,9 +49,9 @@ def test_emnist():
     if args.ar =="no_ar":
         nps_loglik = nps.loglik
     elif args.ar =="old_ar":
-        nps_loglik = ar_loglik
-    elif args.ar =="new_ar":
-        nps_loglik = new_ar_loglik
+        nps_loglik = nps.ar_loglik
+    # elif args.ar =="new_ar":
+    #     nps_loglik = new_ar_loglik
     else:
         print("NOT IMPLEMENTED YET!!")
         sys.exit()
@@ -103,9 +103,9 @@ def predict_entire_image(test_batch, model):
     if args.ar == "no_ar":
         predict_func = nps.predict
     elif args.ar == "old_ar":
-        predict_func = ar_predict
-    elif args.ar =="new_ar":
-        predict_func = new_ar_predict
+        predict_func = nps.ar_predict
+    # elif args.ar =="new_ar":
+    #     predict_func = new_ar_predict
     else:
         raise NotImplementedError("AR variant not implemented.")
 
@@ -113,7 +113,7 @@ def predict_entire_image(test_batch, model):
     single_xt_all = nps.AggregateInput((test_batch["xt_all"].elements[0][0][0:1], 0))
 
     with torch.no_grad():
-        mean, var, _, _ = predict_func(
+        mean, var, ft, yt = predict_func( # TODO mean is not mean
             model,
             single_context, #test_batch["contexts"],
             single_xt_all, #test_batch["xt_all"],
@@ -121,7 +121,15 @@ def predict_entire_image(test_batch, model):
         )
 
     # Get predictions for a single image (assumes batch_size = 1)
-    mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1]
+    mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1] # TODO 
+    # print("mean: ", mean)
+    # print("ft: ", ft[0].shape)
+    # first_sample = ft[0]
+    # pixel_values = first_sample[0, 0]  # shape: [N]
+    # mean_flat = pixel_values + 0.5
+    # mean_flat = mean_flat.squeeze(0)
+    print("mean_flat.shape: ", mean_flat.shape)
+
     var_flat = var.elements[0][0, 0]
 
     print(f"Mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
@@ -168,8 +176,8 @@ def create_original_image_from_all(test_batch, plot=False):
 
 
 if __name__ == "__main__":
-    print(f"\nEvaluating the model with {args.ar}")
-    experiment, model = test_emnist()
+    # print(f"\nEvaluating the model with {args.ar}")
+    # experiment, model = test_emnist()
 
 
     training_results_path = os.path.join('code', '_experiments')
@@ -179,10 +187,11 @@ if __name__ == "__main__":
         root=training_results_path,
         load=True,
     )
+    print(f"Loading model from: {experiment['wd'].root}")
     model = experiment["model"]
     model.load_state_dict(
-        torch.load(experiment["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
-    )
+        torch.load(experiment["wd"].file("model-epoch-71.torch"), map_location="cpu", weights_only=False)["weights"]
+    ) # model-best
 
     label_map = {}
     with open("code/arnp/datasets/EMNIST/others/emnist-balanced-mapping.txt", "r") as f:
@@ -197,7 +206,7 @@ if __name__ == "__main__":
 
         fixed_index = 1 # choose which batch to take
 
-        num_context_list = [1, 50, 100, 200]
+        num_context_list = [50, 100, 300, 400]
 
         fig, axes = plt.subplots(4, len(num_context_list), figsize=(4 * len(num_context_list), 12))
 

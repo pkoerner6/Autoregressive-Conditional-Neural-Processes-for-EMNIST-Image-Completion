@@ -712,6 +712,18 @@ def main(**kw_args):
                 else:
                     fix_noise = None
 
+                print("Passing epoch: ", i)
+                gen_train, _, _ = exp.data[args.data]["setup"]( # TODO added this to change target, context size based on epoch
+                    args,
+                    config,
+                    num_tasks_train=2**6 if args.train_fast else 2**14,
+                    num_tasks_cv=2**6 if args.train_fast else 2**12,
+                    num_tasks_eval=2**6 if args.evaluate_fast else 2**12,
+                    device=device,
+                    training_epoch=i,  # pass epoch
+                    max_epochs=args.epochs,
+                )
+                
                 state, _ = train(
                     state,
                     model,
