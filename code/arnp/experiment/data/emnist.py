@@ -144,6 +144,7 @@ class EmnistGenerator(DataGenerator):
                 min_target = 3
                 num_target = int(min_target + progress * (max_target - min_target))
                 num_target = min(num_target, 784 - num_context)  # ensure it fits
+                # num_target = 784
             else:
                 # num_context = torch.randint(3, 197, (1,)).item()
                 # num_target = torch.randint(3, 200 - num_context, (1,)).item()
@@ -180,7 +181,7 @@ class EmnistGenerator(DataGenerator):
             batch = {
                 "contexts": [(xc, yc)],  # Ensure correct tensor format for context
                 "xt": AggregateInput((xt, 0)),  # Ensure xt follows correct convention
-                "yt": Aggregate(yt),  # Ensure yt follows correct convention
+                "yt": Aggregate(yt),  # Ensure yt follows correct convention # TODO!!!!
                 "xt_all": AggregateInput((xt_all, 0)), 
                 "yt_all": Aggregate(yt_all),   
                 "labels": labels 
@@ -210,13 +211,14 @@ def setup(
     config["image_size"] = 28  # EMNIST images are 28X28
 
     config["transform"] = None # (-0.48, 0.48) # TODO transform 
+    config["fix_noise"] = False
 
     # Configure convolutional models:
     config["points_per_unit"] = 4
     config["margin"] = 1
-    config["conv_receptive_field"] = 100
-    config["unet_strides"] = (1,) + (2,) * 6
-    config["unet_channels"] = (64,) * 7
+    config["conv_receptive_field"] = 100 
+    config["unet_strides"] = (1,) + (2,) * 6 # TODO used to be (1,) + (2,) * 6
+    config["unet_channels"] = (64,) * 7 # TODO used to be (64,) * 7
 
 
     gen_train = EmnistGenerator(

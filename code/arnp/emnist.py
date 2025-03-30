@@ -25,6 +25,7 @@ from train import main
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, required=True)
 parser.add_argument("--ar", type=str, choices=["no_ar", "old_ar", "new_ar"], required=True)
+parser.add_argument("--arch", type=str, choices=["unet", "unet-res"], required=True)
 parser.add_argument("--num_samples", type=int, default=100)
 args = parser.parse_args()
 
@@ -38,6 +39,7 @@ def test_emnist():
         data="emnist",
         root=training_results_path,
         load=True,
+        arch=args.arch,
     )
     print(f"Loading model from: {experiment['wd'].root}")
 
@@ -186,12 +188,22 @@ if __name__ == "__main__":
         data="emnist",
         root=training_results_path,
         load=True,
+        arch=args.arch,
     )
     print(f"Loading model from: {experiment['wd'].root}")
+    path = "code/_experiments/emnist/convcnp/unet-res/loglik/model-best.torch"
+    print("Exists:", os.path.exists(path))
+    print("Is file:", os.path.isfile(path))
+    print("Size (bytes):", os.path.getsize(path) if os.path.isfile(path) else "N/A")
+
     model = experiment["model"]
     model.load_state_dict(
-        torch.load(experiment["wd"].file("model-epoch-71.torch"), map_location="cpu", weights_only=False)["weights"]
+        torch.load(experiment["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
     ) # model-best
+
+    # model.load_state_dict(
+    #     torch.load(experiment["wd"].file("model-epoch-31.torch"), map_location="cpu", weights_only=False)["weights"]
+    # ) # checkpoint
 
     label_map = {}
     with open("code/arnp/datasets/EMNIST/others/emnist-balanced-mapping.txt", "r") as f:
@@ -204,9 +216,9 @@ if __name__ == "__main__":
     for name, gen_eval in gens_eval_instances:
         print(f"\n{name}")
 
-        fixed_index = 1 # choose which batch to take
+        fixed_index = 3 # choose which batch to take, 4 is great
 
-        num_context_list = [50, 100, 300, 400]
+        num_context_list = [1, 40, 200, 400]
 
         fig, axes = plt.subplots(4, len(num_context_list), figsize=(4 * len(num_context_list), 12))
 

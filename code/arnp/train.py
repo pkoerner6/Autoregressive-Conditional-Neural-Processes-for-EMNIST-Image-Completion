@@ -17,6 +17,7 @@ import neuralprocesses.torch as nps
 import torch
 
 from loglik import loglik
+from convgnp import construct_convgnp
 
 __all__ = ["main"]
 
@@ -26,6 +27,7 @@ warnings.filterwarnings("ignore", category=ToDenseWarning)
 def train(state, model, opt, objective, gen, *, fix_noise):
     """Train for an epoch."""
     vals = []
+    # print("fix_noise", fix_noise)
     for batch in tqdm(gen.epoch(), total=gen.num_batches):
     # for batch in gen.epoch():
         state, obj = objective(
@@ -36,7 +38,6 @@ def train(state, model, opt, objective, gen, *, fix_noise):
             batch["yt"],
             fix_noise=fix_noise,
         )
-        # print(B.to_numpy(obj)) # TODO
         vals.append(B.to_numpy(obj))
         # Be sure to negate the output of `objective`.
         val = -B.mean(obj)
@@ -425,7 +426,8 @@ def main(**kw_args):
                 transform=config["transform"],
             )
         elif args.model == "convcnp":
-            model = nps.construct_convgnp(
+            # model = nps.construct_convgnp(
+            model = construct_convgnp(
                 points_per_unit=config["points_per_unit"],
                 dim_x=config["dim_x"],
                 dim_yc=(1,) * config["dim_y"],
@@ -720,8 +722,8 @@ def main(**kw_args):
                     num_tasks_cv=2**6 if args.train_fast else 2**12,
                     num_tasks_eval=2**6 if args.evaluate_fast else 2**12,
                     device=device,
-                    training_epoch=i,  # pass epoch
-                    max_epochs=args.epochs,
+                    # training_epoch=i,  # pass epoch # TODO
+                    # max_epochs=args.epochs,
                 )
                 
                 state, _ = train(

@@ -1,10 +1,15 @@
 import lab as B
 import numpy as np
+import torch
+import sys
+from matrix import Diagonal
 
 from neuralprocesses import _dispatch
 from neuralprocesses.numdata import num_data
 from neuralprocesses.model import Model
 from neuralprocesses.model.util import fix_noise as fix_noise_in_pred
+from neuralprocesses.dist import MultiOutputNormal
+
 
 __all__ = ["loglik"]
 
@@ -55,13 +60,11 @@ def loglik(
 
     # Sample in batches to alleviate memory requirements.
     logpdfs = None
+    penalties = [] # TODO
     done_num_samples = 0
     while done_num_samples < num_samples:
         # Limit the number of samples at the batch size.
         this_num_samples = min(num_samples - done_num_samples, batch_size)
-
-        # print("yt stats:", B.min(yt), B.max(yt))
-        # print("context yc stats:", B.min(contexts[0][1]), B.max(contexts[0][1]))
 
         # Perform batch.
         state, pred = model(
@@ -73,14 +76,22 @@ def loglik(
             dtype_lik=dtype_lik,
             **kw_args,
         )
-        # print("Predicted mean (transformed) stats:", B.min(pred.mean), B.max(pred.mean))
-        # print("Pred
-        # icted var stats:", B.min(pred.var), B.max(pred.var))
-        # logpdf = pred.logpdf(yt)
-        # print("logpdf stats:", B.min(logpdf), B.max(logpdf))
-
         pred = fix_noise_in_pred(pred, fix_noise)
+
         this_logpdfs = pred.logpdf(B.cast(dtype_lik, yt))
+
+        # --- Variance Regularization --- # TODO
+        try:
+            var = pred.vectorised_normal.var  # shape: (num_samples, batch_size, dim)
+            var_diag = var.diag
+            epsilon = 1e-4
+            print("var_diag: ", var_diag)
+            penalty = (1.0 / (var_diag + epsilon)).mean()  # penalize small variance
+        except AttributeError:
+            penalty = 0.0
+
+        penalties.append(penalty)
+
 
         # If the number of samples is equal to one but `num_samples > 1`, then the
         # encoding was a `Dirac`, so we can stop batching. Also, set `num_samples = 1`
@@ -108,6 +119,14 @@ def loglik(
         # Normalise by the number of targets.
         logpdfs = logpdfs / B.cast(dtype_lik, num_data(xt, yt))
 
+    
+    # --- Apply regularization --- # TODO
+    reg_strength = 1e-3  # Tune this!
+    print("penalties: ", penalties)
+    if penalties:
+        total_penalty = B.stack(*penalties).mean()
+        logpdfs -= reg_strength * total_penalty
+    sys.exit()
     return state, logpdfs
 
 
