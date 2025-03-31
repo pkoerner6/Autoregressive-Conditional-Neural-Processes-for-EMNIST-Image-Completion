@@ -7,7 +7,6 @@ import neuralprocesses.torch as nps  # This fixes inspection below.
 __all__ = [
     "construct_convgnp",
     "construct_likelihood",
-    "construct_likelihood_clamped",
     "parse_transform",
     "register_model",
 ]
@@ -42,94 +41,7 @@ def construct_likelihood(nps=nps, *, spec, dim_y, num_basis_functions, dtype):
         num_channels = 2 * dim_y
         selector = nps.SelectFromChannels(dim_y, dim_y)
         lik = nps.HeterogeneousGaussianLikelihood()
-    elif spec == "lowrank":
-        num_channels = (2 + num_basis_functions) * dim_y
-        selector = nps.SelectFromChannels(dim_y, (num_basis_functions, dim_y), dim_y)
-        lik = nps.LowRankGaussianLikelihood(num_basis_functions)
-    elif spec == "dense":
-        # This is intended to only work for global variables.
-        num_channels = 2 * dim_y + dim_y * dim_y
-        selector = None
-        lik = nps.Chain(
-            nps.Splitter(2 * dim_y, dim_y * dim_y),
-            nps.Parallel(
-                lambda x: x,
-                nps.Chain(
-                    nps.ToDenseCovariance(),
-                    nps.DenseCovariancePSDTransform(),
-                ),
-            ),
-            nps.DenseGaussianLikelihood(),
-        )
-    elif spec == "spikes-beta":
-        num_channels = (2 + 3) * dim_y  # Alpha, beta, and three log-probabilities
-        selector = nps.SelectFromChannels(dim_y, dim_y, dim_y, dim_y, dim_y)
-        lik = nps.SpikesBetaLikelihood()
-    elif spec == "bernoulli-gamma":
-        num_channels = (2 + 2) * dim_y  # Shape, scale, and two log-probabilities
-        selector = nps.SelectFromChannels(dim_y, dim_y, dim_y, dim_y)
-        lik = nps.BernoulliGammaLikelihood()
-
-    else:
-        raise ValueError(f'Incorrect likelihood specification "{spec}".')
-    return num_channels, selector, lik
-
-
-
-def construct_likelihood_clamped(nps=nps, *, spec, dim_y, num_basis_functions, dtype):
-    """Construct the likelihood.
-
-    Args:
-        nps (module): Appropriate backend-specific module.
-        spec (str, optional): Specification. Must be one of `"het"`, `"lowrank"`,
-            `"dense"`, `"spikes-beta"`, or `"bernoulli-gamma"`. Defaults to `"lowrank"`.
-            Must be given as a keyword argument.
-        dim_y (int): Dimensionality of the outputs. Must be given as a keyword argument.
-        num_basis_functions (int): Number of basis functions for the low-rank
-            likelihood. Must be given as a keyword argument.
-        dtype (dtype): Data type. Must be given as a keyword argument.
-
-    Returns:
-        int: Number of channels that the likelihood requires.
-        coder: Coder which can select a particular output channel. This coder may be
-            `None`.
-        coder: Coder.
-    """
-    if spec == "het":
-        num_channels = 2 * dim_y
-        selector = nps.SelectFromChannels(dim_y, dim_y)
-
-        # Wrap the HeterogeneousGaussianLikelihood with sigmoid clamping
-        base_lik = nps.HeterogeneousGaussianLikelihood()
-
-        class SigmoidVarianceTransform(torch.nn.Module):
-            def forward(self, z):
-                # Extract the tensor from the Aggregate
-                z_tensor = z.elements[0]  # shape: [1, 16, 2, 384]
-                
-                # Separate mean and raw variance
-                mean = z_tensor[:, :, 0, :]  # shape: [1, 16, 384]
-                raw_var = z_tensor[:, :, 1, :]  # shape: [1, 16, 384]
-
-                # Apply sigmoid soft-clamping
-                # var = 1e-4 + 0.2 * torch.sigmoid(raw_var)
-                min_var = 1e-3
-                max_var = 0.2
-                # var = min_var + (max_var - min_var) * torch.sigmoid(raw_var) # TODO this is for clamping
-                var = torch.nn.functional.softplus(raw_var) + min_var # add a small constant noise floor
-
-                print("Min, Max of raw_var (not clamped):", round(raw_var.min().item(), 3), round(raw_var.max().item(), 3), "Min, Max of clamped var:", round(var.min().item(), 3), round(var.max().item(), 3))
-
-                # Concatenate back along the channel dimension
-                transformed = torch.stack([mean, var], dim=2)  # shape: [1, 16, 2, 384]
-
-                # Wrap in Aggregate again to keep NP flow happy
-                return type(z)(transformed)
-
-        lik = nps.Chain(
-            SigmoidVarianceTransform(),
-            base_lik,
-        )
+        print(lik)
     elif spec == "lowrank":
         num_channels = (2 + num_basis_functions) * dim_y
         selector = nps.SelectFromChannels(dim_y, (num_basis_functions, dim_y), dim_y)
@@ -194,9 +106,6 @@ def parse_transform(nps=nps, *, transform):
     else:
         transform = lambda x: x
     return transform
-
-
-
 
 
 
@@ -413,15 +322,13 @@ def construct_convgnp(
         encoder_likelihood = nps.DeterministicLikelihood()
 
     # Construct likelihood of the decoder.
-    likelihood_in_channels, selector, likelihood = construct_likelihood( # TODO use construct_likelihood_clamped ?
+    likelihood_in_channels, selector, likelihood = construct_likelihood(
         nps,
         spec=likelihood,
         dim_y=dim_yt,
         num_basis_functions=num_basis_functions,
         dtype=dtype,
     )
-
-    
 
     # Resolve the architecture.
     conv_out_channels = _convgnp_resolve_architecture(
