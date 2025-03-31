@@ -42,7 +42,6 @@ def construct_likelihood(nps=nps, *, spec, dim_y, num_basis_functions, dtype):
         num_channels = 2 * dim_y
         selector = nps.SelectFromChannels(dim_y, dim_y)
         lik = nps.HeterogeneousGaussianLikelihood()
-        print(lik)
     elif spec == "lowrank":
         num_channels = (2 + num_basis_functions) * dim_y
         selector = nps.SelectFromChannels(dim_y, (num_basis_functions, dim_y), dim_y)

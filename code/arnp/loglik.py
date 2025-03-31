@@ -60,7 +60,7 @@ def loglik(
 
     # Sample in batches to alleviate memory requirements.
     logpdfs = None
-    penalties = [] # TODO
+    penalties = []
     done_num_samples = 0
     while done_num_samples < num_samples:
         # Limit the number of samples at the batch size.
@@ -80,18 +80,16 @@ def loglik(
 
         this_logpdfs = pred.logpdf(B.cast(dtype_lik, yt))
 
-        # --- Variance Regularization --- # TODO
+        # Variance Regularization
         try:
-            var = pred.vectorised_normal.var  # shape: (num_samples, batch_size, dim)
+            var = pred.vectorised_normal.var
             var_diag = var.diag
             epsilon = 1e-4
-            print("var_diag: ", var_diag)
             penalty = (1.0 / (var_diag + epsilon)).mean()  # penalize small variance
         except AttributeError:
             penalty = 0.0
 
         penalties.append(penalty)
-
 
         # If the number of samples is equal to one but `num_samples > 1`, then the
         # encoding was a `Dirac`, so we can stop batching. Also, set `num_samples = 1`
@@ -120,13 +118,11 @@ def loglik(
         logpdfs = logpdfs / B.cast(dtype_lik, num_data(xt, yt))
 
     
-    # --- Apply regularization --- # TODO
-    reg_strength = 1e-3  # Tune this!
-    print("penalties: ", penalties)
+    # Apply regularization
+    reg_strength = 1e-3
     if penalties:
         total_penalty = B.stack(*penalties).mean()
         logpdfs -= reg_strength * total_penalty
-    sys.exit()
     return state, logpdfs
 
 

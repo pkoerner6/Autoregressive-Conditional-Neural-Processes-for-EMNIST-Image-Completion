@@ -18,8 +18,6 @@ warnings.simplefilter("ignore", category=DeprecationWarning)
 import neuralprocesses.torch as nps
 from train import main
 # from ar import ar_loglik, ar_predict
-# from new_ar import ar_loglik as new_ar_loglik
-# from new_ar import ar_predict as new_ar_predict
 
 
 parser = argparse.ArgumentParser()
@@ -102,38 +100,31 @@ def create_masked_image(test_batch):
 
 
 def predict_entire_image(test_batch, model):
-    if args.ar == "no_ar":
-        predict_func = nps.predict
-    elif args.ar == "old_ar":
-        predict_func = nps.ar_predict
-    # elif args.ar =="new_ar":
-    #     predict_func = new_ar_predict
-    else:
-        raise NotImplementedError("AR variant not implemented.")
-
     single_context = [(xc[0:1], yc[0:1]) for xc, yc in test_batch["contexts"]]
     single_xt_all = nps.AggregateInput((test_batch["xt_all"].elements[0][0][0:1], 0))
 
-    with torch.no_grad():
-        mean, var, ft, yt = predict_func( # TODO mean is not mean
-            model,
-            single_context, #test_batch["contexts"],
-            single_xt_all, #test_batch["xt_all"],
-            num_samples=args.num_samples,
-        )
+    if args.ar == "no_ar":
+        with torch.no_grad():
+            mean, var, ft, yt = nps.predict( # TODO mean is not mean
+                model,
+                single_context, 
+                single_xt_all,
+                num_samples=args.num_samples,
+            )
+    elif args.ar == "old_ar":
+        with torch.no_grad():
+            mean, var, ft, yt = nps.ar_predict( # TODO mean is not mean
+                model,
+                single_context, 
+                single_xt_all,
+                num_samples=args.num_samples,
+                order="random"
+            )
+    else:
+        raise NotImplementedError("AR variant not implemented.")
 
-    # Get predictions for a single image (assumes batch_size = 1)
-    mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1] # TODO 
-    # print("mean: ", mean)
-    # print("ft: ", ft[0].shape)
-    # first_sample = ft[0]
-    # pixel_values = first_sample[0, 0]  # shape: [N]
-    # mean_flat = pixel_values + 0.5
-    # mean_flat = mean_flat.squeeze(0)
-    print("mean_flat.shape: ", mean_flat.shape)
-
+    mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1] 
     var_flat = var.elements[0][0, 0]
-
     print(f"Mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
     print(f"Variance - min: {var_flat.min().item():.6f}, max: {var_flat.max().item():.6f}")
 
@@ -190,20 +181,10 @@ if __name__ == "__main__":
         load=True,
         arch=args.arch,
     )
-    print(f"Loading model from: {experiment['wd'].root}")
-    path = "code/_experiments/emnist/convcnp/unet-res/loglik/model-best.torch"
-    print("Exists:", os.path.exists(path))
-    print("Is file:", os.path.isfile(path))
-    print("Size (bytes):", os.path.getsize(path) if os.path.isfile(path) else "N/A")
-
     model = experiment["model"]
     model.load_state_dict(
         torch.load(experiment["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
     ) # model-best
-
-    # model.load_state_dict(
-    #     torch.load(experiment["wd"].file("model-epoch-31.torch"), map_location="cpu", weights_only=False)["weights"]
-    # ) # checkpoint
 
     label_map = {}
     with open("code/arnp/datasets/EMNIST/others/emnist-balanced-mapping.txt", "r") as f:
@@ -216,11 +197,12 @@ if __name__ == "__main__":
     for name, gen_eval in gens_eval_instances:
         print(f"\n{name}")
 
-        fixed_index = 3 # choose which batch to take, 4 is great
+        fixed_index = 3 # choose which batch to take, 3 and 4 is great for regularized convcnp (14 shows also a "3"); 7 is good for old convcnp
 
-        num_context_list = [1, 40, 200, 400]
+        num_context_list = [1, 40, 200, 784]
 
-        fig, axes = plt.subplots(4, len(num_context_list), figsize=(4 * len(num_context_list), 12))
+        # fig, axes = plt.subplots(4, len(num_context_list), figsize=(4 * len(num_context_list), 12))
+        fig, axes = plt.subplots(3, len(num_context_list), figsize=(4 * len(num_context_list), 9))
 
         for col, num_context in enumerate(num_context_list):
             print("Number of context pixels: ", num_context)
@@ -238,29 +220,29 @@ if __name__ == "__main__":
             masked_image = create_masked_image(test_batch)
             mean_image, var_image = predict_entire_image(test_batch, model)
 
-            axes[0, col].imshow(original_image.numpy(), cmap="gray")
+            # axes[0, col].imshow(original_image.numpy(), cmap="gray")
+            # axes[0, col].axis("off")
+
+            axes[0, col].imshow(masked_image.numpy())
             axes[0, col].axis("off")
 
-            axes[1, col].imshow(masked_image.numpy())
+            axes[1, col].imshow(mean_image.numpy(), cmap="gray")
             axes[1, col].axis("off")
 
-            axes[2, col].imshow(mean_image.numpy(), cmap="gray")
+            axes[2, col].imshow(var_image.numpy(), cmap="gray")
             axes[2, col].axis("off")
 
-            axes[3, col].imshow(var_image.numpy(), cmap="gray")
-            axes[3, col].axis("off")
-
-            axes[0, col].set_title(f"{num_context}", fontsize=20)
+            axes[0, col].set_title(f"{num_context}", fontsize=28)
         
-        fig.text(0.5, 0.95, "Number of context points", ha="center", fontsize=24)
+        fig.text(0.5, 0.95, "Number of context points", ha="center", fontsize=28)
 
-        fig.text(0.05, 0.8, "Original", ha="center", va="center", rotation=90, fontsize=20)
-        fig.text(0.05, 0.57, "Masked", ha="center", va="center", rotation=90, fontsize=20)
-        fig.text(0.05, 0.35, "Mean", ha="center", va="center", rotation=90, fontsize=20)
-        fig.text(0.05, 0.13, "Variance", ha="center", va="center", rotation=90, fontsize=20)
+        # fig.text(0.05, 0.8, "Original", ha="center", va="center", rotation=90, fontsize=24)
+        fig.text(0.05, 0.74, "Context", ha="center", va="center", rotation=90, fontsize=28) # for 4 rows use position: 0.05, 0.57
+        fig.text(0.05, 0.45, "Mean", ha="center", va="center", rotation=90, fontsize=28) # for 4 rows use position: 0.05, 0.35
+        fig.text(0.05, 0.16, "Variance", ha="center", va="center", rotation=90, fontsize=28) # for 4 rows use position: 0.05, 0.13
 
         plt.tight_layout(rect=[0, 0, 1, 0.93])
-        plt.savefig(f"figures/emnist_{name.replace(' ', '_').lower()}_{args.model}_{args.ar}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(f"figures/{name.replace(' ', '_').lower()}_{args.model}_{args.ar}_{args.arch}.png", dpi=300, bbox_inches="tight")
         plt.close()
 
 
