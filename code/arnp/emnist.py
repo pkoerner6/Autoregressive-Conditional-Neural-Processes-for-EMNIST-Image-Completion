@@ -99,7 +99,7 @@ def predict_entire_image(test_batch, model):
 
     if args.ar == "no_ar":
         with torch.no_grad():
-            mean, var, ft, yt = nps.predict(
+            mean, var, ft, _ = nps.predict(
                 model,
                 single_context, 
                 single_xt_all,
@@ -111,17 +111,19 @@ def predict_entire_image(test_batch, model):
             print(f"Variance - min: {var_flat.min().item():.6f}, max: {var_flat.max().item():.6f}")
     elif args.ar == "old_ar":
         with torch.no_grad():
-            mean, var, ft, ft_var, yt = ar_predict(
+            mean, var, ft, ft_var, _ = ar_predict(
                 model,
                 single_context, 
                 single_xt_all,
                 num_samples=args.num_samples,
-                order="given"
+                order="random"
             )
-            mean_flat = ft.elements[0][0, 0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1] 
-            var_flat = ft_var.elements[0][0, 0, 0]
-            print(f"ft mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
-            print(f"ft_var - min: {var_flat.min().item():.6f}, max: {var_flat.max().item():.6f}")
+            mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1]
+            var_flat = var.elements[0][0, 0]
+            smoothed_mean_flat = ft.elements[0][0, 0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1] 
+            print(f"Mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
+            print(f"Variance - min: {var_flat.min().item():.6f}, max: {var_flat.max().item():.6f}")
+            print(f"smoothed mean - min: {smoothed_mean_flat.min().item():.6f}, max: {smoothed_mean_flat.max().item():.6f}")
     else:
         raise NotImplementedError("AR variant not implemented.")
 
@@ -138,36 +140,18 @@ def predict_entire_image(test_batch, model):
         mean_image[pixel_y[i], pixel_x[i]] = mean_flat[i]
         var_image[pixel_y[i], pixel_x[i]] = var_flat[i]
 
-    return mean_image, var_image
+    smoothed_mean_image = torch.zeros((28, 28))
+    if args.ar == "old_ar":
+        for i in range(len(pixel_x)):
+            smoothed_mean_image[pixel_y[i], pixel_x[i]] = smoothed_mean_flat[i]
 
-
-def create_original_image_from_all(test_batch, plot=False):
-    original_image = torch.zeros((28, 28)) # blank image
-
-    all_pixels = test_batch["yt_all"].elements[0][0, 0].view(-1)
-    all_coords = test_batch["xt_all"].elements[0][0][0].T
-
-    # Convert coordinates from [-1,1] to pixel indices [0,27] with correct rounding
-    pixel_x_all = torch.round((all_coords[:, 0] + 1) * 13.5).long()
-    pixel_y_all = torch.round((all_coords[:, 1] + 1) * 13.5).long()
-
-    # Place pixel values in the full image
-    for i in range(len(pixel_x_all)):
-        grayscale_value = (all_pixels[i].item() + 0.5)
-        original_image[pixel_y_all[i], pixel_x_all[i]] = grayscale_value
-    
-    if plot:
-        plt.imshow(original_image.numpy(), cmap="gray")
-        plt.axis("off")
-        plt.show()
-
-    return original_image
+    return mean_image, var_image, smoothed_mean_image
 
 
 
 if __name__ == "__main__":
-    print(f"\nEvaluating the model with {args.ar}")
-    experiment, model = test_emnist()
+    # print(f"\nEvaluating the model with {args.ar}")
+    # experiment, model = test_emnist()
 
 
     training_results_path = os.path.join('code', '_experiments')
@@ -181,7 +165,7 @@ if __name__ == "__main__":
     model = experiment["model"]
     model.load_state_dict(
         torch.load(experiment["wd"].file("model-best.torch"), map_location="cpu", weights_only=False)["weights"]
-    ) # model-best
+    )
 
     label_map = {}
     with open("code/arnp/datasets/EMNIST/others/emnist-balanced-mapping.txt", "r") as f:
@@ -194,11 +178,14 @@ if __name__ == "__main__":
     for name, gen_eval in gens_eval_instances:
         print(f"\n{name}")
 
-        fixed_index = 3 # choose which batch to take, 3 and 4 is great for regularized convcnp (14 shows also a "3"); 7 is good for old convcnp
+        fixed_index = 3 # for regularized convcnp; 7 for old convcnp
 
         num_context_list = [1, 40, 200, 784]
 
-        fig, axes = plt.subplots(3, len(num_context_list), figsize=(4 * len(num_context_list), 9))
+        if args.ar == "old_ar":
+            fig, axes = plt.subplots(4, len(num_context_list), figsize=(4 * len(num_context_list), 12))
+        else: 
+            fig, axes = plt.subplots(3, len(num_context_list), figsize=(4 * len(num_context_list), 9))
 
         for col, num_context in enumerate(num_context_list):
             print("Number of context pixels: ", num_context)
@@ -212,26 +199,46 @@ if __name__ == "__main__":
             print(f"True label: {char} (label ID: {label_id})")
 
             # Generate all image components
-            original_image = create_original_image_from_all(test_batch)
             masked_image = create_masked_image(test_batch)
-            mean_image, var_image = predict_entire_image(test_batch, model)
+            mean_image, var_image, smoothed_mean_image = predict_entire_image(test_batch, model)
 
-            axes[0, col].imshow(masked_image.numpy())
-            axes[0, col].axis("off")
+            if args.ar == "old_ar":
+                axes[0, col].imshow(masked_image.numpy())
+                axes[0, col].axis("off")
 
-            axes[1, col].imshow(mean_image.numpy(), cmap="gray")
-            axes[1, col].axis("off")
+                axes[1, col].imshow(mean_image.numpy(), cmap="gray")
+                axes[1, col].axis("off")
 
-            axes[2, col].imshow(var_image.numpy(), cmap="gray")
-            axes[2, col].axis("off")
+                axes[2, col].imshow(var_image.numpy(), cmap="gray")
+                axes[2, col].axis("off")
 
-            axes[0, col].set_title(f"{num_context}", fontsize=28)
+                axes[3, col].imshow(smoothed_mean_image.numpy(), cmap="gray")
+                axes[3, col].axis("off")
+
+                axes[0, col].set_title(f"{num_context}", fontsize=28)
+            else:
+                axes[0, col].imshow(masked_image.numpy())
+                axes[0, col].axis("off")
+
+                axes[1, col].imshow(mean_image.numpy(), cmap="gray")
+                axes[1, col].axis("off")
+
+                axes[2, col].imshow(var_image.numpy(), cmap="gray")
+                axes[2, col].axis("off")
+
+                axes[0, col].set_title(f"{num_context}", fontsize=28)
         
         fig.text(0.5, 0.95, "Number of context points", ha="center", fontsize=28)
 
-        fig.text(0.05, 0.74, "Context", ha="center", va="center", rotation=90, fontsize=28) # for 4 rows use position: 0.05, 0.57
-        fig.text(0.05, 0.45, "Mean", ha="center", va="center", rotation=90, fontsize=28) # for 4 rows use position: 0.05, 0.35
-        fig.text(0.05, 0.16, "Variance", ha="center", va="center", rotation=90, fontsize=28) # for 4 rows use position: 0.05, 0.13
+        if args.ar == "old_ar":
+            fig.text(0.05, 0.80, "Context", ha="center", va="center", rotation=90, fontsize=28) 
+            fig.text(0.05, 0.57, "Mean", ha="center", va="center", rotation=90, fontsize=28) 
+            fig.text(0.05, 0.35, "Variance", ha="center", va="center", rotation=90, fontsize=28) 
+            fig.text(0.05, 0.13, "Smoothed", ha="center", va="center", rotation=90, fontsize=28)
+        else:
+            fig.text(0.05, 0.74, "Context", ha="center", va="center", rotation=90, fontsize=28)
+            fig.text(0.05, 0.45, "Mean", ha="center", va="center", rotation=90, fontsize=28)
+            fig.text(0.05, 0.16, "Variance", ha="center", va="center", rotation=90, fontsize=28)
 
         plt.tight_layout(rect=[0, 0, 1, 0.93])
         plt.savefig(f"figures/{name.replace(' ', '_').lower()}_{args.model}_{args.ar}_{args.arch}.png", dpi=300, bbox_inches="tight")
