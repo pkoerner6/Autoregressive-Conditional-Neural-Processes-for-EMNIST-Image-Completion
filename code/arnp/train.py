@@ -137,6 +137,7 @@ def main(**kw_args):
     )
     parser.add_argument("--mean-diff", type=float, default=None)
     parser.add_argument("--objective", choices=["loglik", "elbo"], default="loglik")
+    parser.add_argument("--regularize", action="store_true")
     parser.add_argument("--num-samples", type=int, default=20)
     parser.add_argument("--resume-at-epoch", type=int)
     parser.add_argument("--train-fast", action="store_true")
@@ -531,15 +532,14 @@ def main(**kw_args):
         out.kv("Number of parameters", nps.num_params(model))
 
     # Setup training objective.
-    if args.objective == "loglik":
+    if args.objective == "loglik" and args.regularize:
+        print("Using regularized log-likelihood")
         objective = partial(
-            # nps.loglik,
             loglik,
             num_samples=args.num_samples,
             normalise=not args.unnormalised,
         )
         objective_cv = partial(
-            # nps.loglik,
             loglik,
             num_samples=args.num_samples,
             normalise=not args.unnormalised,
@@ -548,8 +548,30 @@ def main(**kw_args):
             (
                 "Loglik",
                 partial(
-                    # nps.loglik,
                     loglik,
+                    num_samples=args.evaluate_num_samples,
+                    batch_size=args.evaluate_batch_size,
+                    normalise=not args.unnormalised,
+                ),
+            )
+        ]
+    elif args.objective == "loglik":
+        print("Not using regularized log-likelihood")
+        objective = partial(
+            nps.loglik,
+            num_samples=args.num_samples,
+            normalise=not args.unnormalised,
+        )
+        objective_cv = partial(
+            nps.loglik,
+            num_samples=args.num_samples,
+            normalise=not args.unnormalised,
+        )
+        objectives_eval = [
+            (
+                "Loglik",
+                partial(
+                    nps.loglik,
                     num_samples=args.evaluate_num_samples,
                     batch_size=args.evaluate_batch_size,
                     normalise=not args.unnormalised,
@@ -583,8 +605,7 @@ def main(**kw_args):
             (
                 "Loglik",
                 partial(
-                    # nps.loglik,
-                    loglik,
+                    nps.loglik,
                     num_samples=args.evaluate_num_samples,
                     batch_size=args.evaluate_batch_size,
                     normalise=not args.unnormalised,

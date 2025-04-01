@@ -45,7 +45,6 @@ plt.title(f"Training and Validation Log-Likelihood over Epochs for {args.model}"
 plt.legend()
 plt.tight_layout()
 plt.savefig(f"figures/training_validation_loglik_{args.model}.png", dpi=300, bbox_inches="tight")
-# plt.show()
 
 
 plt.figure(figsize=(10, 6))
@@ -57,6 +56,5 @@ plt.title(f"Log-Likelihood Variance over Epochs for {args.model}", fontsize=20)
 plt.legend()
 plt.tight_layout()
 plt.savefig(f"figures/loglik_variance_only_{args.model}.png", dpi=300, bbox_inches="tight")
-plt.show()
 
 

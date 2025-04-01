@@ -1,13 +1,10 @@
 import lab as B
 import numpy as np
-import torch
-from matrix import Diagonal
 
 from neuralprocesses import _dispatch
 from neuralprocesses.numdata import num_data
 from neuralprocesses.model import Model
 from neuralprocesses.model.util import fix_noise as fix_noise_in_pred
-from neuralprocesses.dist import MultiOutputNormal
 
 
 __all__ = ["loglik"]
@@ -83,7 +80,7 @@ def loglik(
         try:
             var_diag = pred.vectorised_normal.var.diag  
             epsilon = 1e-4
-            penalty = (1.0 / (var_diag + epsilon)).mean()  # penalize small variance
+            penalty = (1.0 / (var_diag.tensor + epsilon)).mean()  # penalize small variance
         except AttributeError:
             penalty = 0.0
 

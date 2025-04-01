@@ -1,7 +1,6 @@
 import torch
 import torchvision.datasets as tvds
 import os
-import sys
 import lab as B
 from neuralprocesses.aggregate import Aggregate, AggregateInput
 from neuralprocesses.data.data import DataGenerator
@@ -68,9 +67,6 @@ class EmnistGenerator(DataGenerator):
         self.training_epoch = training_epoch
         self.max_epochs = max_epochs
         
-        # torch.manual_seed(seed)
-        # torch.cuda.manual_seed_all(seed) 
-        
         self.data, self.targets = self.load_emnist(train, subset, device, class_range)
 
 
@@ -116,7 +112,6 @@ class EmnistGenerator(DataGenerator):
                 indices = torch.tensor([fixed_index] * self.batch_size)
             else:
                 indices = torch.randint(0, len(self.data), (self.batch_size,))
-            # indices = torch.randint(0, len(self.data), (self.batch_size,))
 
             labels = self.targets[indices] 
 
@@ -144,10 +139,7 @@ class EmnistGenerator(DataGenerator):
                 min_target = 3
                 num_target = int(min_target + progress * (max_target - min_target))
                 num_target = min(num_target, 784 - num_context)  # ensure it fits
-                # num_target = 784
             else:
-                # num_context = torch.randint(3, 197, (1,)).item()
-                # num_target = torch.randint(3, 200 - num_context, (1,)).item()
                 if num_context is None:
                     num_context = torch.randint(3, 197, (1,)).item() 
                 if num_target is None:
@@ -161,16 +153,10 @@ class EmnistGenerator(DataGenerator):
             xc = B.take(pixel_coords, context_indices, axis=1)
             xt = B.take(pixel_coords, target_indices, axis=1)
 
-            # lower, upper = (-0.48, 0.48) # TODO transform 
-            # epsilon = 1e-4 # TODO transform 
-
             # Extract pixel values and normalize to [-0.5, 0.5]
             yc = B.take(images, context_indices, axis=2) - 0.5  # (batch_size, 1, N)
             yt = B.take(images, target_indices, axis=2) - 0.5  # (batch_size, 1, M)
             
-            # yc = torch.clamp(yc, min=lower + epsilon, max=upper - epsilon) # TODO transform 
-            # yt = torch.clamp(yt, min=lower + epsilon, max=upper - epsilon) # TODO transform 
-
             xt_all = pixel_coords.permute(0, 2, 1)  # (batch_size, 2, 784)
             yt_all = images - 0.5 
 
@@ -179,9 +165,9 @@ class EmnistGenerator(DataGenerator):
             xt = xt.permute(0, 2, 1)  # (batch_size, 2, M)
 
             batch = {
-                "contexts": [(xc, yc)],  # Ensure correct tensor format for context
-                "xt": AggregateInput((xt, 0)),  # Ensure xt follows correct convention
-                "yt": Aggregate(yt),  # Ensure yt follows correct convention # TODO!!!!
+                "contexts": [(xc, yc)],
+                "xt": AggregateInput((xt, 0)),
+                "yt": Aggregate(yt),
                 "xt_all": AggregateInput((xt_all, 0)), 
                 "yt_all": Aggregate(yt_all),   
                 "labels": labels 
@@ -210,15 +196,15 @@ def setup(
 
     config["image_size"] = 28  # EMNIST images are 28X28
 
-    config["transform"] = None # (-0.48, 0.48) # TODO transform 
+    config["transform"] = None
     config["fix_noise"] = False
 
     # Configure convolutional models:
     config["points_per_unit"] = 4
     config["margin"] = 1
     config["conv_receptive_field"] = 100 
-    config["unet_strides"] = (1,) + (2,) * 6 # TODO used to be (1,) + (2,) * 6
-    config["unet_channels"] = (64,) * 7 # TODO used to be (64,) * 7
+    config["unet_strides"] = (1,) + (2,) * 6
+    config["unet_channels"] = (64,) * 7 
 
 
     gen_train = EmnistGenerator(

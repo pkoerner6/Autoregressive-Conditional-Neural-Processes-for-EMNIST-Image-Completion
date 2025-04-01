@@ -1,6 +1,4 @@
 from plum import convert
-import torch
-import sys
 import neuralprocesses.torch as nps  # This fixes inspection below.
 
 

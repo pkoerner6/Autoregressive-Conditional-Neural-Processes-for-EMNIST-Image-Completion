@@ -1,7 +1,5 @@
 import argparse
-
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 import os
 import sys
@@ -9,15 +7,13 @@ from tqdm import tqdm
 import lab as B
 import wbml.out as out
 import experiment as exp
-import torchvision.datasets as tvds
-
 
 import warnings
 warnings.simplefilter("ignore", category=DeprecationWarning)
 
 import neuralprocesses.torch as nps
 from train import main
-# from ar import ar_loglik, ar_predict
+from ar import ar_predict
 
 
 parser = argparse.ArgumentParser()
@@ -50,8 +46,6 @@ def test_emnist():
         nps_loglik = nps.loglik
     elif args.ar =="old_ar":
         nps_loglik = nps.ar_loglik
-    # elif args.ar =="new_ar":
-    #     nps_loglik = new_ar_loglik
     else:
         print("NOT IMPLEMENTED YET!!")
         sys.exit()
@@ -105,28 +99,31 @@ def predict_entire_image(test_batch, model):
 
     if args.ar == "no_ar":
         with torch.no_grad():
-            mean, var, ft, yt = nps.predict( # TODO mean is not mean
+            mean, var, ft, yt = nps.predict(
                 model,
                 single_context, 
                 single_xt_all,
                 num_samples=args.num_samples,
             )
+            mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1]
+            var_flat = var.elements[0][0, 0]
+            print(f"Mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
+            print(f"Variance - min: {var_flat.min().item():.6f}, max: {var_flat.max().item():.6f}")
     elif args.ar == "old_ar":
         with torch.no_grad():
-            mean, var, ft, yt = nps.ar_predict( # TODO mean is not mean
+            mean, var, ft, ft_var, yt = ar_predict(
                 model,
                 single_context, 
                 single_xt_all,
                 num_samples=args.num_samples,
-                order="random"
+                order="given"
             )
+            mean_flat = ft.elements[0][0, 0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1] 
+            var_flat = ft_var.elements[0][0, 0, 0]
+            print(f"ft mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
+            print(f"ft_var - min: {var_flat.min().item():.6f}, max: {var_flat.max().item():.6f}")
     else:
         raise NotImplementedError("AR variant not implemented.")
-
-    mean_flat = mean.elements[0][0, 0] + 0.5 # de-normalize from [-0.5, 0.5] -> [0, 1] 
-    var_flat = var.elements[0][0, 0]
-    print(f"Mean - min: {mean_flat.min().item():.6f}, max: {mean_flat.max().item():.6f}")
-    print(f"Variance - min: {var_flat.min().item():.6f}, max: {var_flat.max().item():.6f}")
 
     # Get coordinates to reshape flat vector to image
     coords = test_batch["xt_all"].elements[0][0][0].T
@@ -169,8 +166,8 @@ def create_original_image_from_all(test_batch, plot=False):
 
 
 if __name__ == "__main__":
-    # print(f"\nEvaluating the model with {args.ar}")
-    # experiment, model = test_emnist()
+    print(f"\nEvaluating the model with {args.ar}")
+    experiment, model = test_emnist()
 
 
     training_results_path = os.path.join('code', '_experiments')
@@ -201,7 +198,6 @@ if __name__ == "__main__":
 
         num_context_list = [1, 40, 200, 784]
 
-        # fig, axes = plt.subplots(4, len(num_context_list), figsize=(4 * len(num_context_list), 12))
         fig, axes = plt.subplots(3, len(num_context_list), figsize=(4 * len(num_context_list), 9))
 
         for col, num_context in enumerate(num_context_list):
@@ -220,9 +216,6 @@ if __name__ == "__main__":
             masked_image = create_masked_image(test_batch)
             mean_image, var_image = predict_entire_image(test_batch, model)
 
-            # axes[0, col].imshow(original_image.numpy(), cmap="gray")
-            # axes[0, col].axis("off")
-
             axes[0, col].imshow(masked_image.numpy())
             axes[0, col].axis("off")
 
@@ -236,7 +229,6 @@ if __name__ == "__main__":
         
         fig.text(0.5, 0.95, "Number of context points", ha="center", fontsize=28)
 
-        # fig.text(0.05, 0.8, "Original", ha="center", va="center", rotation=90, fontsize=24)
         fig.text(0.05, 0.74, "Context", ha="center", va="center", rotation=90, fontsize=28) # for 4 rows use position: 0.05, 0.57
         fig.text(0.05, 0.45, "Mean", ha="center", va="center", rotation=90, fontsize=28) # for 4 rows use position: 0.05, 0.35
         fig.text(0.05, 0.16, "Variance", ha="center", va="center", rotation=90, fontsize=28) # for 4 rows use position: 0.05, 0.13
